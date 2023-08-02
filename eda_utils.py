@@ -48,7 +48,7 @@ def region_wise_stat(df, method='knn', split_type='lat_long', model_type='xg_boo
 
     df = df.dropna(subset=['PM25'])
     grp = df.groupby('Region')
-    stat_data = []
+    stat_data, ts_col, lat_long_col = [], [], []
 
     if split_type == 'lat_long':
         train_stations, test_stations = lat_long_split_stations(df)
@@ -61,47 +61,51 @@ def region_wise_stat(df, method='knn', split_type='lat_long', model_type='xg_boo
 
         for _, data in group.iterrows():
             row = []
-            if include_timestamp:
-                date = dateutil.parser.parse(data['Timestamp'].strftime('%Y-%m-%d %X'))
-                row.append(date.timestamp())
-                if split_type == 'timestamp':
-                    timestamps.append(date.timestamp())
-            if include_latlong:
-                row.extend(data['Meteo'])
-            else:
-                row.extend(data['Meteo'][:-2])
+            date = dateutil.parser.parse(data['Timestamp'].strftime('%Y-%m-%d %X'))
+            row.append(date.timestamp())
+            if split_type == 'timestamp':
+                timestamps.append(date.timestamp())
+            row.extend(data['Meteo'])
             row.append(data['PM25'])
             grp_data.append(row)
         
+        ts_col = [row[0] for row in grp_data]
+        lat_long_col = [tuple(row[-3:-1]) for row in grp_data]
+
         grp_data = np.array(grp_data)
+
+        if not include_timestamp:
+            grp_data = grp_data[:, 1:]
+        if not include_latlong:
+            grp_data = np.c_[grp_data[:, :-3], grp_data[:, -1]]
+        
         imputed_data = impute(grp_data, method=method)
 
         if split_type == 'random':
-            X, y = imputed_data[:, :-1], imputed_data[:, -1]
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33)
+            X_train, X_test, y_train, y_test = train_test_split(imputed_data[:, :-1], imputed_data[:, -1], test_size=0.33)
+
         elif split_type == 'lat_long':
             X_train, X_test, y_train, y_test = [], [], [], []
-            for data in imputed_data:
-                lat_long = (data[-3], data[-2])
+            for lat_long, data in zip(lat_long_col, imputed_data):
                 if lat_long in train_stations:
                     X_train.append(data[:-1])
                     y_train.append(data[-1])
                 elif lat_long in test_stations:
                     X_test.append(data[:-1])
                     y_test.append(data[-1])
-            X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
+            
         elif split_type == 'timestamp':
             train_timestamps, test_timestamps = timestamp_split(set(timestamps))
             X_train, X_test, y_train, y_test = [], [], [], []
-            for data in imputed_data:
-                time = data[0]
-                if time in train_timestamps:
+            for ts, data in zip(ts_col, imputed_data):
+                if ts in train_timestamps:
                     X_train.append(data[:-1])
                     y_train.append(data[-1])
-                elif time in test_timestamps:
+                elif ts in test_timestamps:
                     X_test.append(data[:-1])
                     y_test.append(data[-1])
-            X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
+        
+        X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
 
         if model_type == 'rt_rf':
             model = RandomTreesEmbedding(n_estimators=800,max_depth=2).fit(X_train)
