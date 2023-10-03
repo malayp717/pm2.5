@@ -13,6 +13,7 @@ import xgboost
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_squared_error
 from sklearn.linear_model import LinearRegression
+import joblib
 
 ''' Use inbuilt sklearn functions to fill the missing nan values in the data '''
 def impute(data, method):
@@ -32,99 +33,71 @@ def impute(data, method):
 
 ''' Get region wise RMSE, Pearson R values
     Parameters:
-        df: A pandas dataframe with columns Timestamp, Region, Latitude, Longitude, Meteo, PM2.5 information (in this order)
-        method: The data imputation method to be applied (knn, mean, iterative)
+        df: A 2D numpy array with each row corresponding to Timestamp, Latitude, Longitude, RH, Temp, PM2.5 values (in this order)
+        model_dir: Directory in which the trained model needs to be stored
         split_type: The split to be applied between train and test data (random, lat_long, timestamp forecasting)
         model_type: The regression model to be used for PM2.5 prediction (rt_rf, xg_boost)
         include_latlong: Whether to add lat_long information while predicting the PM2.5 values
         include_timestamp: Whether to add timestamp information while predicting the PM2.5 values
 '''
-def region_wise_stat(df, method='knn', split_type='lat_long', model_type='xg_boost', include_latlong=True,\
-                     include_timestamp=True):
+def train_and_eval(data, model_dir, method, split='lat_long', model_type='xgb'):
     
-    assert split_type == 'random' or split_type == 'lat_long' or split_type == 'timestamp', \
-    'split_type can only be random, lat_long or timestamp'
-    assert model_type == 'rt_rf' or model_type == 'xg_boost', 'model_type can only be rt_rf or xg_boost'
+    assert split == 'random' or split == 'lat_long' or split == 'timestamp', \
+    'split can only be random, lat_long or timestamp'
+    assert model_type == 'rt_rf' or model_type == 'xgb', 'model_type can only be rt_rf or xgb'
 
-    df = df.dropna(subset=['PM25'])
-    grp = df.groupby('Region')
-    stat_data, ts_col, lat_long_col = [], [], []
+    stat_data = []
 
-    if split_type == 'lat_long':
-        train_stations, test_stations = lat_long_split_stations(df)
+    X_train, X_test, y_train, y_test = [], [], [], []
 
-    for name, group in grp:
-        grp_data = []
+    if split == 'random':
+        X_train, X_test, y_train, y_test = train_test_split(data[:, :-1], data[:, -1], test_size=0.33)
 
-        if split_type == 'timestamp':
-            timestamps = []
+    elif split == 'latlong':
+        train_stations, test_stations = lat_long_split_stations(list(set(zip(data[:, 1], data[:, 2]))))
 
-        for _, data in group.iterrows():
-            row = []
-            date = dateutil.parser.parse(data['Timestamp'].strftime('%Y-%m-%d %X'))
-            row.append(date.timestamp())
-            if split_type == 'timestamp':
-                timestamps.append(date.timestamp())
-            row.extend(data['Meteo'])
-            row.append(data['PM25'])
-            grp_data.append(row)
-        
-        ts_col = [row[0] for row in grp_data]
-        lat_long_col = [tuple(row[-3:-1]) for row in grp_data]
-
-        grp_data = np.array(grp_data)
-
-        if not include_timestamp:
-            grp_data = grp_data[:, 1:]
-        if not include_latlong:
-            grp_data = np.c_[grp_data[:, :-3], grp_data[:, -1]]
-        
-        imputed_data = impute(grp_data, method=method)
-
-        if split_type == 'random':
-            X_train, X_test, y_train, y_test = train_test_split(imputed_data[:, :-1], imputed_data[:, -1], test_size=0.33)
-
-        elif split_type == 'lat_long':
-            X_train, X_test, y_train, y_test = [], [], [], []
-            for lat_long, data in zip(lat_long_col, imputed_data):
-                if lat_long in train_stations:
-                    X_train.append(data[:-1])
-                    y_train.append(data[-1])
-                elif lat_long in test_stations:
-                    X_test.append(data[:-1])
-                    y_test.append(data[-1])
-            
-        elif split_type == 'timestamp':
-            train_timestamps, test_timestamps = timestamp_split(set(timestamps))
-            X_train, X_test, y_train, y_test = [], [], [], []
-            for ts, data in zip(ts_col, imputed_data):
+        for lat_long, data in zip(data[:, 1:3], data):
+            if tuple(lat_long) in train_stations:
+                X_train.append(data[:-1])
+                y_train.append(data[-1])
+            elif tuple(lat_long) in test_stations:
+                X_test.append(data[:-1])
+                y_test.append(data[-1])
+    
+    else:
+        train_timestamps, test_timestamps = timestamp_split(set(data[:, 0]))
+        for ts, data in zip(data[:, 0], data):
                 if ts in train_timestamps:
                     X_train.append(data[:-1])
                     y_train.append(data[-1])
                 elif ts in test_timestamps:
                     X_test.append(data[:-1])
                     y_test.append(data[-1])
+
+    
+    X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
+
+    if model_type == 'rt_rf':
+        model = RandomTreesEmbedding(n_estimators=800,max_depth=2).fit(X_train)
+        X_train = model.transform(X_train).toarray()
+        X_test = model.transform(X_test).toarray()
+
+        model = RandomForestRegressor(n_estimators=800, max_features="sqrt", min_samples_leaf=2).fit(X_train, y_train)
+    elif model_type == 'xgb':
+        model = XGBRegressor(objective ='reg:squarederror', eval_metric=custom_eval_metric)
+        model.fit(X_train, y_train)
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+
+    train_stat = eval_stat(y_train_pred, y_train)
+    test_stat = eval_stat(y_test_pred, y_test)
+
+    stat_data.append({'Train_RMSE': train_stat[0], 'Train_Pearson_R': train_stat[1], \
+                    'Test_RMSE': test_stat[0], 'Test_Pearson_R': test_stat[1]})
         
-        X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
-
-        if model_type == 'rt_rf':
-            model = RandomTreesEmbedding(n_estimators=800,max_depth=2).fit(X_train)
-            X_train = model.transform(X_train).toarray()
-            X_test = model.transform(X_test).toarray()
-
-            model = RandomForestRegressor(n_estimators=800, max_features="sqrt", min_samples_leaf=2).fit(X_train, y_train)
-        elif model_type == 'xg_boost':
-            model = XGBRegressor(objective ='reg:squarederror')
-            model.fit(X_train, y_train)
-
-        y_train_pred = model.predict(X_train)
-        y_test_pred = model.predict(X_test)
-
-        train_stat = eval_stat(y_train_pred, y_train)
-        test_stat = eval_stat(y_test_pred, y_test)
-
-        stat_data.append({'Region': name, 'Train_RMSE': train_stat[0], 'Train_Pearson_R': train_stat[1], \
-                        'Test_RMSE': test_stat[0], 'Test_Pearson_R': test_stat[1]})
+    model_name = model_dir + f"bihar_{model_type}_{method}_{split}.pkl"
+    joblib.dump(model, model_name)
     
     return stat_data
 
@@ -132,13 +105,8 @@ def region_wise_stat(df, method='knn', split_type='lat_long', model_type='xg_boo
     Parameters:
         df: A pandas dataframe with columns Timestamp, Region, Latitude, Longitude, Meteo, PM2.5 information (in this order) 
 '''
-def lat_long_split_stations(df):
-    grps = df.groupby(['Latitude', 'Longitude'])
-        
-    stations = []
+def lat_long_split_stations(stations):
 
-    for key, _ in grps:
-        stations.append(key)
     random.shuffle(stations)
 
     index = int(len(stations)/1.5)
@@ -156,3 +124,9 @@ def timestamp_split(timestamps):
     index = len(timestamps)//2
     train_timestamps, test_timestamps = set(timestamps[:index]), set(timestamps[index:])
     return train_timestamps, test_timestamps
+
+def custom_eval_metric(y_true, y_pred):
+    lower_bound = 0
+    upper_bound = 500
+    y_pred = np.clip(y_pred, lower_bound, upper_bound)
+    return 'custom_eval_metric', np.mean(np.abs(y_true - y_pred))
