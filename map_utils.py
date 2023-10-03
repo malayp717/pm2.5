@@ -14,7 +14,7 @@ def coordinate_bounds(region):
     min_long, max_long = coordinates_bound['minx'].min(), coordinates_bound['maxx'].max()
     return min_lat, max_lat, min_long, max_long
 
-def get_indexes(grid_long, grid_lat, region):
+def get_indices(grid_long, grid_lat, region):
     points = [Point(lon, lat) for lon, lat in zip(grid_long.flatten(), grid_lat.flatten())]
     mask = np.zeros(len(points), dtype=bool)
 
@@ -28,7 +28,7 @@ def get_indexes(grid_long, grid_lat, region):
     return mask_reshaped
 
 def favorable_points(grid_long, grid_lat, grid_values, region):
-    mask = get_indexes(grid_long, grid_lat, region)
+    mask = get_indices(grid_long, grid_lat, region)
     long, lat, values = grid_long[mask], grid_lat[mask], grid_values[mask]
     return np.array(long), np.array(lat), np.array(values)
 
@@ -45,20 +45,20 @@ def LCN(grid_long, grid_lat, grid_values):
     # Apply Gaussian smoothing
     smoothed_values = gaussian_filter(normalized_values, sigma=sigma)
 
-    return X, Y, smoothed_values
+    return smoothed_values
 
 def create_plot(data_long, data_lat, values, region, name, type):
     fig, ax = plt.subplots(figsize=(50, 40))
 
-    norm = Normalize(vmin=values.min(), vmax=values.max())
+    Normalize(vmin=values.min(), vmax=values.max())
     my_cmap = cm.get_cmap('jet')
     my_cmap.set_over('darkred')
     my_cmap.set_under('blue')
 
     region.plot(ax=ax, color='white', edgecolor='grey', linewidth=0.5)
     scatter = ax.scatter(data_long, data_lat, c=values, cmap=my_cmap, marker='.')
-    cbar = plt.colorbar(scatter, ax=ax, label=f'Predicted $PM_{2.5}$')
+    plt.colorbar(scatter, ax=ax, label=f'Predicted $PM_{2.5}$')
 
     ax.set_axis_off()
-    plt.savefig(f'{plot_dir}{name}.{type}', dpi=200)
+    plt.savefig(f'{plot_dir}{name}.{type}', dpi=400)
     plt.close()
