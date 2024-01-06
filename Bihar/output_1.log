@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/home/malay/pm25/pm2.5/Bihar/map.py", line 95, in <module>
+    plot_1(bihar)
+  File "/home/malay/pm25/pm2.5/Bihar/map.py", line 52, in plot_1
+    df = pd.read_csv(f'{data_bihar}/{mnth}.csv', index=False)
+TypeError: read_csv() got an unexpected keyword argument 'index'

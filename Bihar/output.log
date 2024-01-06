@@ -1,0 +1,25 @@
+31
+Traceback (most recent call last):
+  File "/home/malay/pm25/pm2.5/Bihar/map.py", line 83, in <module>
+    plot(data_dt_dict, grid_long, grid_lat, mask ,bihar)
+  File "/home/malay/pm25/pm2.5/Bihar/map.py", line 45, in plot
+    create_plot(grid_long[mask], grid_lat[mask], pm25[mask], bihar, f'{bihar_plot_dir}/map_LCN_{mnth}_absolute', 'absolute')
+  File "/home/malay/pm25/pm2.5/Bihar/../map_utils.py", line 68, in create_plot
+    plt.savefig(f'{path}.jpg', dpi=400)
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/pyplot.py", line 1023, in savefig
+    res = fig.savefig(*args, **kwargs)
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/figure.py", line 3378, in savefig
+    self.canvas.print_figure(fname, **kwargs)
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/backend_bases.py", line 2366, in print_figure
+    result = print_method(
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/backend_bases.py", line 2232, in <lambda>
+    print_method = functools.wraps(meth)(lambda *args, **kwargs: meth(
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/backends/backend_agg.py", line 526, in print_jpg
+    self._print_pil(filename_or_obj, "jpeg", pil_kwargs)
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/backends/backend_agg.py", line 458, in _print_pil
+    mpl.image.imsave(
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/matplotlib/image.py", line 1689, in imsave
+    image.save(fname, **pil_kwargs)
+  File "/home/malay/anaconda3/envs/pytorch_env/lib/python3.10/site-packages/PIL/Image.py", line 2428, in save
+    fp = builtins.open(filename, "w+b")
+FileNotFoundError: [Errno 2] No such file or directory: '/hdd/malay/plots//bihar//map_LCN_May_absolute.jpg'

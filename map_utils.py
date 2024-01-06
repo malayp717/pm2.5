@@ -48,9 +48,10 @@ def LCN(grid_long, grid_lat, grid_values):
     return smoothed_values
 
 def create_plot(data_long, data_lat, values, region, path, type):
-    fig, ax = plt.subplots(figsize=(50, 40))
+    _, ax = plt.subplots(figsize=(50, 40))
     # ticks = [i for i in range(0, 550, 50)]
-    norm = Normalize(vmin=values.min(), vmax=values.max())
+    vmin, vmax = values.min() if type == 'relative' else -50, values.max() if type == 'relative' else 1000
+    norm = Normalize(vmin=vmin, vmax=vmax)
 
     my_cmap = cm.get_cmap('jet')
     my_cmap.set_over('darkred')
@@ -58,11 +59,11 @@ def create_plot(data_long, data_lat, values, region, path, type):
 
     region.plot(ax=ax, color='white', edgecolor='grey', linewidth=0.5)
     scatter = ax.scatter(data_long, data_lat, c=values, cmap=my_cmap, marker='.', norm=norm)
-    plt.colorbar(scatter, ax=ax, label=f'Normalized Predicted $PM_{2.5}$')
+    plt.colorbar(scatter, ax=ax, label=f'Predicted $PM_{2.5}$')
     # plt.colorbar(scatter, ax=ax, label='Predicted $PM_{2.5}$', orientation='vertical', extend='both', ticks=ticks)
     # cbar.set_clim(0, 1000)
 
 
     ax.set_axis_off()
-    plt.savefig(f'{path}.{type}', dpi=400)
+    plt.savefig(f'{path}.jpg', dpi=400)
     plt.close()
