@@ -48,9 +48,9 @@ def LCN(grid_long, grid_lat, grid_values):
     return smoothed_values
 
 def create_plot(data_long, data_lat, values, region, path, type):
-    _, ax = plt.subplots(figsize=(50, 40))
+    _, ax = plt.subplots(figsize=(60, 50))
     # ticks = [i for i in range(0, 550, 50)]
-    vmin, vmax = values.min() if type == 'relative' else -50, values.max() if type == 'relative' else 1000
+    vmin, vmax = values.min() if type == 'relative' else -100, values.max() if type == 'relative' else 500
     norm = Normalize(vmin=vmin, vmax=vmax)
 
     my_cmap = cm.get_cmap('jet')

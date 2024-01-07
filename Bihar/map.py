@@ -11,41 +11,32 @@ from map_utils import *
 from eda_utils import *
 from scipy.interpolate import griddata
 
-def monthly_csv(data_dt_dict, grid_long, grid_lat, mask, bihar):
+def monthly_csv(data_ts_dict, mask):
 
-    monthly_eval = {}
+    grid_long, grid_lat = np.meshgrid(np.linspace(min_long, max_long, GRID_SIZE), np.linspace(min_lat, max_lat, GRID_SIZE))
 
-    for date, ts_dict in data_dt_dict.items():
-        # dt = date.strftime('%Y-%m-%d')
+    '''
+        monthly_vals is a dictionary with mapping: month -> [pm25, number of observations]
+    '''
+    monthly_vals = {mnth: [np.zeros((GRID_SIZE, GRID_SIZE)), 0] for mnth in months}
+
+    start = time.time()
+
+    for date, row in data_ts_dict.items():
         mnth = date.strftime('%B')
-        tot_values = np.zeros((GRID_SIZE, GRID_SIZE))
-        
-        for data in ts_dict:
-            for _, val in data.items():
-                grid_values = griddata((val['latitude'], val['longitude']), val['pm25'], (grid_lat, grid_long), method='nearest')
-                lcn_val = LCN(grid_long, grid_lat, grid_values)
-                # mean, var = np.mean(lcn_val), np.var(lcn_val)
-                # lcn_val = (lcn_val - mean) / np.sqrt(var)
-                tot_values = np.add(tot_values, lcn_val)
-        
-        tot_values = tot_values / len(data)
-        
-        if mnth not in monthly_eval:
-            monthly_eval[mnth] = [tot_values]
-        else:
-            monthly_eval[mnth].append(tot_values)
+        # print(row)
+        grid_values = griddata((row['latitude'], row['longitude']), row['pm25'], (grid_lat, grid_long), method='nearest')
+        lcn_val = LCN(grid_long, grid_lat, grid_values)
+        monthly_vals[mnth][0] = np.add(monthly_vals[mnth][0], lcn_val)
+        monthly_vals[mnth][1] += 1
 
-        if mnth != 'May':
-            break
-    
-    for mnth in monthly_eval.keys():
-        print(len(monthly_eval[mnth]))
-        pm25 = np.mean(np.array(monthly_eval[mnth]), axis=0)
-
-        # Write to CSV file
-        df = pd.DataFrame({'latitude': grid_lat[mask], 'longitude': grid_long[mask], 'pm25': tot_values[mask]})
+    for mnth, row in monthly_vals.items():
+        if row[1] == 0: continue
+        pm25 = row[0] / row[1]
+        df = pd.DataFrame({'latitude': grid_lat[mask], 'longitude': grid_long[mask], 'pm25': pm25[mask]})
         df.to_csv(f'{data_bihar}/{mnth}.csv', index=False)
-        break
+
+    print(f'Time taken: {time.time()-start:.3f} s')
 
 
 def monthly_plots(bihar):
@@ -73,25 +64,18 @@ if __name__ == '__main__':
 
     df = pd.read_pickle(data_file)
     df['pm25'] = df['pm25'].astype(np.float64)
+    df = df[['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'pm25']]
     # print(df.dtypes)
+    # print(df.head())
 
     min_lat, max_lat, min_long, max_long = coordinate_bounds(bihar)
     # print(min_lat, max_lat, min_long, max_long)
 
+    '''
+        data_ts_dict: Dictionary that maps timestamp values to corresponding readings
+        Example: Timestamp('2023-05-01 00:00:00'): [timestamp, longitude, latitude, rh, temp, pm25]
+    '''
     data_ts_dict = {timestamp: group for timestamp, group in df.groupby('timestamp')}
-    data_dt_dict = {}
-
-    for timestamp, values in data_ts_dict.items():
-        date = timestamp.date()
-        row = {timestamp: values}
-        if date not in data_dt_dict:
-            data_dt_dict[date] = []
-        data_dt_dict[date].append(row)
-    
-    # print(data_dt_dict.keys())
-
-    pm25_values = []
-    grid_long, grid_lat = np.meshgrid(np.linspace(min_long, max_long, GRID_SIZE), np.linspace(min_lat, max_lat, GRID_SIZE))
 
     '''
         Uncomment the following lines only if you want to change the resolution of the map
@@ -101,6 +85,6 @@ if __name__ == '__main__':
     # np.savetxt(f'{data_bihar}/mask.txt', mask, fmt='%d', delimiter='\t')
     mask = np.loadtxt(f'{data_bihar}/mask.txt', dtype=bool, delimiter='\t')
 
-    monthly_csv(data_dt_dict, grid_long, grid_lat, mask ,bihar)
-    # monthly_plots(bihar)
+    monthly_csv(data_ts_dict, mask)
+    monthly_plots(bihar)
     print(f'Resolution of maps: {np.sqrt(AREA_BIHAR/np.sum(mask))}')
