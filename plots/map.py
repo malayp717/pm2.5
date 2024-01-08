@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from constants import *
-from map_utils import *
-from eda_utils import *
+from plots.map_utils import *
+from data.eda_utils import *
 from scipy.interpolate import griddata
 
 def monthly_csv(data_ts_dict, mask):

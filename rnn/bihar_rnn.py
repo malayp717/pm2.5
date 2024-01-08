@@ -14,7 +14,7 @@ import pandas as pd
 import re
 from utils import *
 from constants import *
-from rnn import RNN
+from rnn.rnn import RNN
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
