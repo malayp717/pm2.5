@@ -16,7 +16,7 @@ from sklearn.linear_model import LinearRegression
 import joblib
 
 ''' Use inbuilt sklearn functions to fill the missing nan values in the data '''
-def impute(data, method):
+def impute(data, method='iterative'):
     assert method == 'knn' or method == 'mean' or method == 'iterative', 'method can only knn, mean or iterative'
     # KNN Imputer
     if method == 'knn':
@@ -30,103 +30,28 @@ def impute(data, method):
     
     return imputer.fit_transform(data)
 
+def find_distance(x, y):
+    return np.abs(x[0] - y[0]) + np.abs(x[1] - y[1])
 
-''' Get region wise RMSE, Pearson R values
+''' ERA5 file resolution is different to the original dataset resolution, find the closest location and return
     Parameters:
-        df: A 2D numpy array with each row corresponding to Timestamp, Latitude, Longitude, RH, Temp, PM2.5 values (in this order)
-        model_dir: Directory in which the trained model needs to be stored
-        split_type: The split to be applied between train and test data (random, lat_long, timestamp forecasting)
-        model_type: The regression model to be used for PM2.5 prediction (rt_rf, xg_boost)
-        include_latlong: Whether to add lat_long information while predicting the PM2.5 values
-        include_timestamp: Whether to add timestamp information while predicting the PM2.5 values
+        orig_df: Original Dataframe
+        params_df: ERA5 dataframe
 '''
-def train_and_eval(data, model_dir, method, split='lat_long', model_type='xgb'):
+def transform_lat_long(orig_df, params_df):
+    lat_lon_orig = list(orig_df.groupby(['latitude', 'longitude']).groups.keys())
+    lat_lon_params = list(params_df.groupby(['latitude', 'longitude']).groups.keys())
+
+    # Lat_Lon in the NetCDRF file -> Lat_Lon in the original dataset
+    close_locs = {}
+
+    for loc_params in lat_lon_params:
+        dist = 10**9
+        for loc_orig in lat_lon_orig:
+            if find_distance(loc_orig, loc_params) < dist:
+                dist = find_distance(loc_orig, loc_params)
+                close_locs[loc_params] = loc_orig
+
+    transformed_locs = [close_locs[(x, y)] for (x, y) in zip(params_df['latitude'], params_df['longitude'])]
     
-    assert split == 'random' or split == 'lat_long' or split == 'timestamp', \
-    'split can only be random, lat_long or timestamp'
-    assert model_type == 'rt_rf' or model_type == 'xgb', 'model_type can only be rt_rf or xgb'
-
-    stat_data = []
-
-    X_train, X_test, y_train, y_test = [], [], [], []
-
-    if split == 'random':
-        X_train, X_test, y_train, y_test = train_test_split(data[:, :-1], data[:, -1], test_size=0.33)
-
-    elif split == 'latlong':
-        train_stations, test_stations = lat_long_split_stations(list(set(zip(data[:, 1], data[:, 2]))))
-
-        for lat_long, data in zip(data[:, 1:3], data):
-            if tuple(lat_long) in train_stations:
-                X_train.append(data[:-1])
-                y_train.append(data[-1])
-            elif tuple(lat_long) in test_stations:
-                X_test.append(data[:-1])
-                y_test.append(data[-1])
-    
-    else:
-        train_timestamps, test_timestamps = timestamp_split(set(data[:, 0]))
-        for ts, data in zip(data[:, 0], data):
-                if ts in train_timestamps:
-                    X_train.append(data[:-1])
-                    y_train.append(data[-1])
-                elif ts in test_timestamps:
-                    X_test.append(data[:-1])
-                    y_test.append(data[-1])
-
-    
-    X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
-
-    if model_type == 'rt_rf':
-        model = RandomTreesEmbedding(n_estimators=800,max_depth=2).fit(X_train)
-        X_train = model.transform(X_train).toarray()
-        X_test = model.transform(X_test).toarray()
-
-        model = RandomForestRegressor(n_estimators=800, max_features="sqrt", min_samples_leaf=2).fit(X_train, y_train)
-    elif model_type == 'xgb':
-        model = XGBRegressor(objective ='reg:squarederror', eval_metric=custom_eval_metric)
-        model.fit(X_train, y_train)
-
-    y_train_pred = model.predict(X_train)
-    y_test_pred = model.predict(X_test)
-
-    train_stat = eval_stat(y_train_pred, y_train)
-    test_stat = eval_stat(y_test_pred, y_test)
-
-    stat_data.append({'Train_RMSE': train_stat[0], 'Train_Pearson_R': train_stat[1], \
-                    'Test_RMSE': test_stat[0], 'Test_Pearson_R': test_stat[1]})
-        
-    model_name = model_dir + f"bihar_{model_type}_{method}_{split}.pkl"
-    joblib.dump(model, model_name)
-    
-    return stat_data
-
-''' Create a dictionary of train and test stations using latitude and longitude informations
-    Parameters:
-        df: A pandas dataframe with columns Timestamp, Region, Latitude, Longitude, Meteo, PM2.5 information (in this order) 
-'''
-def lat_long_split_stations(stations):
-
-    random.shuffle(stations)
-
-    index = int(len(stations)/1.5)
-    train_stations, test_stations = set(stations[:index]), set(stations[index:])
-
-    return train_stations, test_stations
-
-''' Create a dictionary of train and test timestamp values
-    Parameters:
-        timestamps: A python set containing all the unique timestamp values for a particular region
-'''
-def timestamp_split(timestamps):
-    timestamps = list(timestamps)
-    sorted(timestamps)
-    index = len(timestamps)//2
-    train_timestamps, test_timestamps = set(timestamps[:index]), set(timestamps[index:])
-    return train_timestamps, test_timestamps
-
-def custom_eval_metric(y_true, y_pred):
-    lower_bound = 0
-    upper_bound = 500
-    y_pred = np.clip(y_pred, lower_bound, upper_bound)
-    return 'custom_eval_metric', np.mean(np.abs(y_true - y_pred))
+    return map(list, zip(*transformed_locs))
