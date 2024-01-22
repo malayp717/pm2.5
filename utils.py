@@ -1,11 +1,75 @@
 import math
+import random
 import pickle
 import numpy as np
 import pandas as pd
 from scipy import stats
+from xgboost import XGBRegressor
 from sklearn.ensemble import RandomTreesEmbedding, RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 from torch.utils.data import Dataset
+
+''' Create a dictionary of train and test stations using latitude and longitude informations
+    Parameters:
+        stations: A list of tuple (latitude, longitude)
+'''
+def lat_long_split_stations(stations):
+
+    random.shuffle(stations)
+    index = int(len(stations)/1.5)
+    train_stations, test_stations = set(stations[:index]), set(stations[index:])
+
+    return train_stations, test_stations
+
+'''
+    Define a custom upper and lower limit for XGBoost predictions
+'''
+def custom_eval_metric(y_true, y_pred):
+    lower_bound = 0
+    upper_bound = 600
+    y_pred = np.clip(y_pred, lower_bound, upper_bound)
+    return 'custom_eval_metric', np.mean(np.abs(y_true - y_pred))
+
+'''
+
+'''
+def train_test_split(df, cols, split_type='lat_long', normalize=True):
+
+    assert split_type in ({'lat_long', 'timestamp'}), "Wrong split type"
+
+    df['timestamp'] = df['timestamp'].values.astype(float)
+    df['pm25'] = df['pm25'].values.astype(float)
+    df = df[cols]
+
+    c = 'loc' if split_type == 'lat_long' else 'ts'
+
+    if split_type == 'lat_long':
+        df[c] = list(zip(df['latitude'], df['longitude']))
+        locs = df[c].unique()
+        train_idxs, test_idxs = lat_long_split_stations(locs)
+    else:
+        df[c] = df['timestamp']
+        ts = sorted(df[c].unique())
+        x = int(len(ts)/1.5)
+        train_idxs, test_idxs = ts[:x], ts[x:]
+
+    if normalize:
+        scaler = StandardScaler()
+        data = df[[x for x in cols if x != 'pm25']].to_numpy()
+        data = scaler.fit_transform(data)
+        df[[x for x in cols if x != 'pm25']] = data
+    
+    train_df = df[df[c].isin(train_idxs)]
+    train_df = train_df[cols]
+
+    test_df = df[df[c].isin(test_idxs)]
+    test_df = test_df[cols]
+
+    train_data, test_data = train_df.to_numpy(), test_df.to_numpy()
+    X_train, y_train, X_test, y_test = train_data[:, :-1], train_data[:, -1], test_data[:, :-1], test_data[:, -1]
+
+    return X_train, y_train, X_test, y_test
 
 ''' Create pandas dataframe from pickle file
     Input:
@@ -103,6 +167,22 @@ def random_forest_regressor(X, y, n_estimators, min_samples_leaf):
     rf_model = RandomForestRegressor(n_estimators=n_estimators, max_features="sqrt", min_samples_leaf=min_samples_leaf).fit(X, y)
     y_pred = rf_model.predict(X)
     return y_pred
+
+'''
+    Get the performance of our custom XGBoost model
+'''
+def train_XGBoost(X_train, y_train, X_test, y_test):
+    model = XGBRegressor(objective ='reg:squarederror', eval_metric=custom_eval_metric)
+    model.fit(X_train, y_train)
+
+    y_train_pred = model.predict(X_train)
+    y_test_pred = model.predict(X_test)
+
+    train_stat = eval_stat(y_train_pred, y_train)
+    test_stat = eval_stat(y_test_pred, y_test)
+
+    print(f'Train_RMSE: {train_stat[0]},\t Train_Pearson_R: {train_stat[1]},\t \
+            Test_RMSE: {test_stat[0]},\t Test_Pearson_R: {test_stat[1]}')
 
 ''' Convert the timeseries dataset to PyTorch timeseries dataset
     Input: Time Ordered Data for each station
