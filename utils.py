@@ -10,17 +10,24 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 from torch.utils.data import Dataset
 
-''' Create a dictionary of train and test stations using latitude and longitude informations
+random.seed(42)
+
+''' Create a dictionary of train, validation and test stations using latitude and longitude informations
     Parameters:
         stations: A list of tuple (latitude, longitude)
 '''
-def lat_long_split_stations(stations):
+def lat_long_split_stations(stations, loc_min, loc_max, split_ratio):
 
+    stations = [loc for loc in stations if loc != loc_min and loc != loc_max]
     random.shuffle(stations)
-    index = int(len(stations)/1.5)
-    train_stations, test_stations = set(stations[:index]), set(stations[index:])
 
-    return train_stations, test_stations
+    test_index = int((split_ratio[0] + split_ratio[1]) * len(stations))
+    val_index = int(split_ratio[0] * len(stations))
+    train_stations, val_stations, test_stations = stations[:val_index], stations[val_index:test_index], stations[test_index:]
+
+    train_stations.extend([loc_min, loc_max])
+
+    return train_stations, val_stations, test_stations
 
 '''
     Define a custom upper and lower limit for XGBoost predictions
@@ -34,7 +41,7 @@ def custom_eval_metric(y_true, y_pred):
 '''
 
 '''
-def train_test_split(df, cols, split_type='lat_long', normalize=True):
+def train_test_split(df, cols, split_ratio=[0.4, 0.1, 0.5], split_type='lat_long', normalize=True):
 
     assert split_type in ({'lat_long', 'timestamp'}), "Wrong split type"
 
@@ -46,13 +53,15 @@ def train_test_split(df, cols, split_type='lat_long', normalize=True):
 
     if split_type == 'lat_long':
         df[c] = list(zip(df['latitude'], df['longitude']))
+        loc_min, loc_max = df.nsmallest(1, 'pm25')[c].iloc[0], df.nlargest(1, 'pm25')[c].iloc[0]
         locs = df[c].unique()
-        train_idxs, test_idxs = lat_long_split_stations(locs)
+        train_idxs, val_idxs, test_idxs = lat_long_split_stations(locs, loc_min, loc_max, split_ratio)
     else:
         df[c] = df['timestamp']
         ts = sorted(df[c].unique())
-        x = int(len(ts)/1.5)
-        train_idxs, test_idxs = ts[:x], ts[x:]
+        test_index = int((split_ratio[0] + split_ratio[1]) * len(ts))
+        val_index = int(split_ratio[0] * len(ts))
+        train_idxs, val_idxs, test_idxs = ts[:val_index], ts[val_index:test_index], ts[test_index:]
 
     if normalize:
         scaler = StandardScaler()
@@ -63,13 +72,17 @@ def train_test_split(df, cols, split_type='lat_long', normalize=True):
     train_df = df[df[c].isin(train_idxs)]
     train_df = train_df[cols]
 
+    val_df = df[df[c].isin(val_idxs)]
+    val_df = val_df[cols]
+
     test_df = df[df[c].isin(test_idxs)]
     test_df = test_df[cols]
 
-    train_data, test_data = train_df.to_numpy(), test_df.to_numpy()
-    X_train, y_train, X_test, y_test = train_data[:, :-1], train_data[:, -1], test_data[:, :-1], test_data[:, -1]
+    train_data, val_data, test_data = train_df.to_numpy(), val_df.to_numpy(), test_df.to_numpy()
+    X_train, y_train, X_val, y_val, X_test, y_test = train_data[:, :-1], train_data[:, -1], val_data[:, :-1], val_data[:, -1],\
+        test_data[:, :-1], test_data[:, -1]
 
-    return X_train, y_train, X_test, y_test
+    return X_train, y_train, X_val, y_val, X_test, y_test
 
 ''' Create pandas dataframe from pickle file
     Input:
@@ -171,17 +184,20 @@ def random_forest_regressor(X, y, n_estimators, min_samples_leaf):
 '''
     Get the performance of our custom XGBoost model
 '''
-def train_XGBoost(X_train, y_train, X_test, y_test):
+def train_XGBoost(X_train, y_train, X_val, y_val, X_test, y_test):
     model = XGBRegressor(objective ='reg:squarederror', eval_metric=custom_eval_metric)
     model.fit(X_train, y_train)
 
     y_train_pred = model.predict(X_train)
+    y_val_pred = model.predict(X_val) if X_val.shape[0] != 0 else None
     y_test_pred = model.predict(X_test)
-
+    
     train_stat = eval_stat(y_train_pred, y_train)
+    val_stat = eval_stat(y_val_pred, y_val) if X_val.shape[0] != 0 else [None] * 5
     test_stat = eval_stat(y_test_pred, y_test)
 
     print(f'Train_RMSE: {train_stat[0]},\t Train_Pearson_R: {train_stat[1]},\t \
+          Val_RMSE: {val_stat[0]},\t Val_Pearson_R: {val_stat[1]},\t \
             Test_RMSE: {test_stat[0]},\t Test_Pearson_R: {test_stat[1]}')
 
 ''' Convert the timeseries dataset to PyTorch timeseries dataset
