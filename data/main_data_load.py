@@ -14,6 +14,7 @@ import geopandas as gpd
 import os
 import logging
 from PIL import Image
+from itertools import product
 import argparse
 
 def log_list_content(log_file, my_list):
@@ -135,6 +136,7 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--img', action='store_true', help='Image data load')
     # parser.add_argument('-j', '--join', action='store_true', help='Join ERA5 data with Image data')
     parser.add_argument('-f', '--fill', action='store_true', help='Impute missing data using Iterative Imputer')
+    parser.add_argument('-u', '--uts', action='store_true', help='Add NaN rows to make uniform shape across different locations')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -152,6 +154,7 @@ if __name__ == '__main__':
     # output_img_file = f'{data_bihar}/satellite_images.pkl'
     output_merged_file = f'{data_bihar}/bihar_512_sensor_era5_image.pkl'
     output_imputed_file = f'{data_bihar}/bihar_512_sensor_era5_image_imputed.pkl'
+    output_uts_file = f'{data_bihar}/bihar_512_sensor_era5_image_uts.pkl'
 
     variable_names_pbl = ['blh']
     variable_names_other = ['u10', 'v10', 'kx', 'sp', 'tp']
@@ -254,4 +257,39 @@ if __name__ == '__main__':
         imputed_df.to_pickle(output_imputed_file, protocol=4)
 
         print('******\t\tImputing Data Completed\t\t******')
+        print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
+    
+    if args.uts:
+
+        f_df = pd.read_pickle(output_imputed_file)
+        loc_info = f_df.groupby(['latitude', 'longitude', 'block', 'district']).groups.keys()
+
+        print('******\t\tUniform Shape processing start\t\t******')
+        start_time = time.time()
+
+        all_timestamps = f_df['timestamp'].unique()
+        all_locations = f_df.groupby(['latitude', 'longitude', 'block', 'district']).groups.keys()
+        all_combinations = list(product(all_timestamps, all_locations))
+
+        len_ts, len_l, len_c = len(all_timestamps), len(all_locations), len(all_combinations)
+        # print(len_ts, len_l, len_c, len_ts * len_l)
+
+        new_cols = {'timestamp': 'datetime64[ns]', 'locations': tuple}
+        new_df = pd.DataFrame(data=all_combinations, columns=new_cols)
+
+        new_df['latitude'] = new_df['locations'].apply(lambda x : x[0])
+        new_df['longitude'] = new_df['locations'].apply(lambda x : x[1])
+        new_df['block'] = new_df['locations'].apply(lambda x : x[2])
+        new_df['district'] = new_df['locations'].apply(lambda x : x[3])
+        new_df = new_df[['timestamp', 'latitude', 'longitude', 'block', 'district']]
+
+        result_df = pd.merge(new_df, f_df, how='left')
+        df_grouped = result_df.groupby(['latitude', 'longitude', 'block', 'district'])
+
+        for loc, group in df_grouped:
+            assert group.shape[0] == len_ts
+        
+        result_df.to_pickle(output_uts_file, protocol=4)
+
+        print('******\t\tUniform Shape processing Completed\t\t******')
         print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
