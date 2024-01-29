@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from xgboost import XGBRegressor
+from constants import *
 from sklearn.ensemble import RandomTreesEmbedding, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
@@ -44,6 +45,7 @@ def custom_eval_metric(y_true, y_pred):
 def train_test_split(df, cols, split_ratio=[0.4, 0.1, 0.5], split_type='lat_long', normalize=True):
 
     assert split_type in ({'lat_long', 'timestamp'}), "Wrong split type"
+    assert sum(split_ratio) == 1.0, "Wrong split ratio provided"
 
     df['timestamp'] = df['timestamp'].values.astype(float)
     df['pm25'] = df['pm25'].values.astype(float)
@@ -184,7 +186,7 @@ def random_forest_regressor(X, y, n_estimators, min_samples_leaf):
 '''
     Get the performance of our custom XGBoost model
 '''
-def train_XGBoost(X_train, y_train, X_val, y_val, X_test, y_test):
+def train_XGBoost(X_train, y_train, X_val, y_val, X_test, y_test, **model_args):
     model = XGBRegressor(objective ='reg:squarederror', eval_metric=custom_eval_metric)
     model.fit(X_train, y_train)
 
@@ -195,10 +197,15 @@ def train_XGBoost(X_train, y_train, X_val, y_val, X_test, y_test):
     train_stat = eval_stat(y_train_pred, y_train)
     val_stat = eval_stat(y_val_pred, y_val) if X_val.shape[0] != 0 else [None] * 5
     test_stat = eval_stat(y_test_pred, y_test)
+    
+    if len(model_args) != 0:
+        file_name = model_args['model_name']
+        pickle.dump(model, open(f'{model_dir}/{file_name}.pkl', 'wb'))
 
-    print(f'Train_RMSE: {train_stat[0]},\t Train_Pearson_R: {train_stat[1]},\t \
-          Val_RMSE: {val_stat[0]},\t Val_Pearson_R: {val_stat[1]},\t \
-            Test_RMSE: {test_stat[0]},\t Test_Pearson_R: {test_stat[1]}')
+    stats = {'Train_RMSE': train_stat[0], 'Train_Pearson_R': train_stat[1],\
+          'Val_RMSE': val_stat[0], 'Val_Pearson_R': val_stat[1], 'Test_RMSE': test_stat[0], 'Test_Pearson_R': test_stat[1]}
+    
+    return stats
 
 ''' Convert the timeseries dataset to PyTorch timeseries dataset
     Input: Time Ordered Data for each station
