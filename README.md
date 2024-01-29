@@ -2,8 +2,8 @@
 
 XGBoost performance in different settings:
 
-| Model Settings | Train_RMSE | Train_Pearson_R  | Test_RMSE | Test_Pearson_R |
-| ------------- |:-------------:| :-----:| :-----:| :-----:|
+| Model Settings | Train_RMSE | Train_Pearson_R  | Train_RMSE | Train_Pearson_R | Test_RMSE | Test_Pearson_R |
+| ------------- |:-------------:| :-----: | :-----: | :-----: | :-----: | :-----:|
 | Original + lat_long | 36.4563 | 0.9054 | 59.4008 | 0.8309 | 57.618 | 0.8419 |
 | Original + normalized + lat_long | 35.4955 | 0.9018 | 62.9432 | 0.8043 | 58.5243 | 0.8426 |
 | Original  + timestamp | 14.0318 | 0.7944 | 39.2807 | 0.1884 | 148.2336 | 0.0139 |
