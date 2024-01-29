@@ -137,6 +137,7 @@ if __name__ == '__main__':
     # parser.add_argument('-j', '--join', action='store_true', help='Join ERA5 data with Image data')
     parser.add_argument('-f', '--fill', action='store_true', help='Impute missing data using Iterative Imputer')
     parser.add_argument('-u', '--uts', action='store_true', help='Add NaN rows to make uniform shape across different locations')
+    parser.add_argument('-r', '--rnn', action='store_true', help='Impute NaN rows for certain locations to make dataset RNN ready')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -155,6 +156,7 @@ if __name__ == '__main__':
     output_merged_file = f'{data_bihar}/bihar_512_sensor_era5_image.pkl'
     output_imputed_file = f'{data_bihar}/bihar_512_sensor_era5_image_imputed.pkl'
     output_uts_file = f'{data_bihar}/bihar_512_sensor_era5_image_uts.pkl'
+    output_rnn_file = f'{data_bihar}/bihar_512_sensor_era5_rnn.pkl'
 
     variable_names_pbl = ['blh']
     variable_names_other = ['u10', 'v10', 'kx', 'sp', 'tp']
@@ -261,11 +263,11 @@ if __name__ == '__main__':
     
     if args.uts:
 
-        f_df = pd.read_pickle(output_imputed_file)
-        loc_info = f_df.groupby(['latitude', 'longitude', 'block', 'district']).groups.keys()
-
         print('******\t\tUniform Shape processing start\t\t******')
         start_time = time.time()
+
+        f_df = pd.read_pickle(output_imputed_file)
+        loc_info = f_df.groupby(['latitude', 'longitude', 'block', 'district']).groups.keys()
 
         all_timestamps = f_df['timestamp'].unique()
         all_locations = f_df.groupby(['latitude', 'longitude', 'block', 'district']).groups.keys()
@@ -292,4 +294,27 @@ if __name__ == '__main__':
         result_df.to_pickle(output_uts_file, protocol=4)
 
         print('******\t\tUniform Shape processing Completed\t\t******')
+        print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
+
+    if args.rnn:
+        print('******\t\tRNN data processing start\t\t******')
+        start_time = time.time()
+
+        uts_df = pd.read_pickle(output_uts_file)
+        uts_df = uts_df[[col for col in COLUMNS_DICT.keys()]]
+        uts_df_grouped = uts_df.groupby(['latitude', 'longitude'])
+
+        rnn_df = pd.DataFrame(columns=COLUMNS_DICT)
+
+
+        for loc, group in uts_df_grouped:
+            if group['pm25'].count() >= THRESHOLD:
+
+                group_filled = group.interpolate(method='linear', axis=0, limit_direction='both')
+                rnn_df = pd.concat([rnn_df, group_filled], ignore_index=True)
+        
+        rnn_df.sort_values(by='timestamp', inplace=True)
+        rnn_df.to_pickle(output_rnn_file, protocol=4)
+
+        print('******\t\tRNN data processing completed\t\t******')
         print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
