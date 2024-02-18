@@ -178,7 +178,7 @@ if __name__ == '__main__':
     data = scaler.fit_transform(data)
     df[[x for x in df.columns if x not in {'timestamp', 'latitude', 'longitude', 'pm25'}]] = data
 
-    FORECAST_WINDOWS = [6]
+    FORECAST_WINDOWS = [1, 6, 12, 24, 48, 72]
 
     for fw in FORECAST_WINDOWS:
 
