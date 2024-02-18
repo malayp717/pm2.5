@@ -9,7 +9,8 @@ from scipy import stats
 from sklearn import metrics
 import pandas as pd
 from constants import *
-from utils import train_test_split
+from utils import *
+from sklearn.preprocessing import StandardScaler
 # from xgboost import XGBRegressor
 
 import warnings
@@ -110,24 +111,57 @@ def spatialRPlot(color, y_test_ref,  y_test_ref_pred_raw, plot_label = 'test',
         fontsize=25,transform=ax.transAxes)
     plt.tight_layout()
     if save:
-        plt.savefig(f'{plot_dir}/{fig_name}.pdf', dpi=300)
+        plt.savefig(f'{plot_dir}/{fig_name}.jpg', dpi=300)
     pass
     del fig, ax
     return
 
-if __name__ == '__main__':
+def spatialR_over_time(df, model):
+
+    timestamps, spatial_R_values = [], []
+    cols = df.columns
+    df['locs'] = list(zip(df['latitude'], df['longitude']))
+    ts = df['timestamp'].to_list()
+    df['timestamp'] = df['timestamp'].values.astype(float)
+
+    test_locs = load_locs_as_tuples(f'{data_bihar}/test_locations.txt')
+    df = df[df['locs'].isin(test_locs)]
 
     cols = ['timestamp', 'latitude', 'longitude', 'rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp', 'pm25']
-    data_file = f'{data_bihar}/bihar_512_sensor_era5_image_imputed.pkl'
-    model_file = f'{model_dir}/bihar_xgb_iterative_lat_long.pkl'
+    df = df[cols]
+    data = df[[x for x in cols if x != 'pm25']].to_numpy()
 
-    df = pd.read_pickle(data_file)
-    model = joblib.load(model_file)
+    start_time = time.time()
+    print('******\t\t Spatial R over time \t\t******')
+
+    scaler = StandardScaler()
+    data = scaler.fit_transform(data)
+    df[[x for x in cols if x != 'pm25']] = data
+
+    df_grouped = df.groupby('timestamp')
+    ts_info = {y: x for x, y in zip(ts, data[:, 0])}
+
+    for key, group in df_grouped:
+
+        X, y = group.to_numpy()[: , :-1], group.to_numpy()[:, -1]
+        test_stations = [(x, y) for x, y in zip(X[:, 1], X[:, 2])]
+        y_pred = np.clip(model.predict(X), LOWER_BOUND, UPPER_BOUND)
+        spatial_R, _, _, _ = calculateSpatial(y_pred, y, test_stations)
+        spatial_R_values.append(spatial_R)
+        timestamps.append(ts_info[key])
+
+    plt.plot(timestamps, spatial_R_values)
+    plt.savefig(f'{plot_dir}/spatial_R_over_time.jpg', dpi=300)
+
+    print(f'Process Completed\nTime taken: {time.time()-start_time:.2f} s')
+
+def pred_plots(df, model):
 
     X_train, y_train, _, _, X_test, y_test = train_test_split(df, cols, split_ratio=[0.4,0.1,0.5], split_type='lat_long', normalize=True)
     train_stations, test_stations = [(x, y) for x, y in zip(X_train[:, 1], X_train[:, 2])], [(x, y) for x, y in zip(X_test[:, 1], X_test[:, 2])]
 
     y_train_pred, y_test_pred = model.predict(X_train), model.predict(X_test)
+    y_train_pred, y_test_pred = np.clip(y_train_pred, LOWER_BOUND, UPPER_BOUND), np.clip(y_test_pred, LOWER_BOUND, UPPER_BOUND) 
 
     spatial_R, spatial_rmse, station_avg_pred, station_avg = calculateSpatial(y_train_pred, y_train, train_stations)
     Rsquared, pvalue, Rsquared_pearson, pvalue_pearson = eval_stat(y_train_pred, y_train)
@@ -152,4 +186,16 @@ if __name__ == '__main__':
                 fig_name='PM2.5_XGB_test_spatial_R')
     
     print(f'Process Completed\nTime taken: {time.time()-start_time:.2f} s')
-    
+
+if __name__ == '__main__':
+
+    cols = ['timestamp', 'latitude', 'longitude', 'rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp', 'pm25']
+    data_file = f'{data_bihar}/bihar_512_sensor_era5_image_imputed.pkl'
+    model_file = f'{model_dir}/bihar_xgb_iterative_lat_long.pkl'
+
+    df = pd.read_pickle(data_file)
+    df['pm25'] = df['pm25'].clip(LOWER_BOUND, UPPER_BOUND)
+    model = joblib.load(model_file)
+
+    # pred_plots(df, model)
+    spatialR_over_time(df, model)

@@ -30,19 +30,31 @@ def lat_long_split_stations(stations, loc_min, loc_max, split_ratio):
 
     return train_stations, val_stations, test_stations
 
+def load_locs_as_tuples(file_path):
+    tuples_list = []
+
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Split the line into two values and convert them to floats
+            values = line.strip().split()
+            tuple_values = (float(values[0]), float(values[1]))
+            
+            # Append the tuple to the list
+            tuples_list.append(tuple_values)
+
+    return tuples_list
+
 '''
     Define a custom upper and lower limit for XGBoost predictions
 '''
 def custom_eval_metric(y_true, y_pred):
-    lower_bound = 0
-    upper_bound = 600
-    y_pred = np.clip(y_pred, lower_bound, upper_bound)
+    y_pred = np.clip(y_pred, LOWER_BOUND, UPPER_BOUND)
     return 'custom_eval_metric', np.mean(np.abs(y_true - y_pred))
 
 '''
 
 '''
-def train_test_split(df, cols, split_ratio=[0.4, 0.1, 0.5], split_type='lat_long', normalize=True):
+def train_test_split(df, cols, split_ratio=[0.4, 0.1, 0.5], split_type='lat_long', normalize=True, load_locs=True):
 
     assert split_type in ({'lat_long', 'timestamp'}), "Wrong split type"
     assert sum(split_ratio) == 1.0, "Wrong split ratio provided"
@@ -57,7 +69,15 @@ def train_test_split(df, cols, split_ratio=[0.4, 0.1, 0.5], split_type='lat_long
         df[c] = list(zip(df['latitude'], df['longitude']))
         loc_min, loc_max = df.nsmallest(1, 'pm25')[c].iloc[0], df.nlargest(1, 'pm25')[c].iloc[0]
         locs = df[c].unique()
-        train_idxs, val_idxs, test_idxs = lat_long_split_stations(locs, loc_min, loc_max, split_ratio)
+        if load_locs:
+            train_idxs = load_locs_as_tuples(f'{data_bihar}/train_locations.txt')
+            val_idxs = load_locs_as_tuples(f'{data_bihar}/val_locations.txt')
+            test_idxs = load_locs_as_tuples(f'{data_bihar}/test_locations.txt')
+        else:
+            train_idxs, val_idxs, test_idxs = lat_long_split_stations(locs, loc_min, loc_max, split_ratio)
+            np.savetxt(f'{data_bihar}/train_locations.txt', train_idxs, fmt='%f')
+            np.savetxt(f'{data_bihar}/val_locations.txt', val_idxs, fmt='%f')
+            np.savetxt(f'{data_bihar}/test_locations.txt', test_idxs, fmt='%f')
     else:
         df[c] = df['timestamp']
         ts = sorted(df[c].unique())
