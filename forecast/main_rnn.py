@@ -37,16 +37,17 @@ class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers, out_dim):
         super(LSTM, self).__init__()
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True, bidirectional=True)
-        self.gelu = nn.GELU()
+        # self.gelu = nn.GELU()
         self.fc = nn.Linear(hidden_dim*2, out_dim)
 
     def forward(self, x):
         out, _ = self.lstm(x)
-        out = self.gelu(out)
-        out = self.fc(out)
-
+        # out = self.gelu(out)
         out = out[:, -1, :]
-        out = torch.clamp(out, LOWER_BOUND, UPPER_BOUND)
+
+        out = self.fc(out)
+        out = LOWER_BOUND + (out * (UPPER_BOUND - LOWER_BOUND))
+        # out = torch.clamp(out, LOWER_BOUND, UPPER_BOUND)
         return out
 
 class RMSE(nn.Module):
@@ -112,7 +113,7 @@ def train(train_loader, test_loader, lr, hidden_size, num_layers):
     # criterion = nn.MSELoss(reduction='none')
     # criterion = RMSE()
     criterion = FrobeniusNorm()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     start_time = time.time()
     train_losses, val_losses = [], []
