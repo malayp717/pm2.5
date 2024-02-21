@@ -1,6 +1,7 @@
 import math
 import random
 import pickle
+import time
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -227,27 +228,44 @@ def train_XGBoost(X_train, y_train, X_val, y_val, X_test, y_test, **model_args):
     
     return stats
 
-''' Convert the timeseries dataset to PyTorch timeseries dataset
-    Input: Time Ordered Data for each station
-        A Single Station contains ordered data as a list of dictionaries with
-            Meteo: Sparse Random Tree Embedding (as learnt from random_tree_embedding)
-            PM2.5: Corresponding PM2.5 labels
-    Output: Same data converted to a PyTorch tensor
-'''
-class TimeSeriesDataset(Dataset):
+def data_processing(df, train_locs, val_locs, test_locs, WS, FW):
+    df_grouped = df.groupby(['latitude', 'longitude'])
+    train_data, val_data, test_data = [], [], []
 
-    def __init__(self, data):
-        self.data = data
+    start_time = time.time()
+    print(f"---------\t Dataset processing started; FORECAST WINDOW = {FW}\t---------")
 
-    def __len__(self):
-        return len(self.data)
+    for loc, group in df_grouped:
 
-    def __getitem__(self, idx):
+        data = group.to_numpy()
+        # Since first three columns are timestamp, latitude and longitude respectively
+        X, y = data[:, 3:-1], data[:, -1]
 
-        X, y = [], []
+        '''
+            Vectorized code for making different windows of data
+        '''
+        y = np.lib.stride_tricks.sliding_window_view(y, (FW,))
+        X = X[:y.shape[0], :]
+        X = np.lib.stride_tricks.sliding_window_view(X, (WS, X.shape[1]))
+        y = np.lib.stride_tricks.sliding_window_view(y, (WS, y.shape[1]))
+        X, y = np.squeeze(X), np.squeeze(y)
 
-        for item in self.data[idx]:
-            X.append(item['Meteo'])
-            y.append(item['PM25'])
+        if FW == 1:
+            y = y.reshape(y.shape[0], -1, 1)
 
-        return np.array(X), np.array(y)
+        X, y = X.astype(np.float32), y.astype(np.float32)
+
+        assert X.shape[0] == y.shape[0] and X.shape[1] == y.shape[1]
+
+        # data = [{'meteo': X_w.astype(np.float32), 'pm25': y_w.astype(np.float32)} for X_w, y_w in zip(X, y)]
+        if loc in train_locs:
+            train_data.extend([{'meteo': X_w, 'pm25': y_w} for X_w, y_w in zip(X, y)])
+        elif loc in val_locs:
+            val_data.extend([{'meteo': X_w, 'pm25': y_w} for X_w, y_w in zip(X, y)])
+        elif loc in test_locs:
+            test_data.extend([{'meteo': X_w, 'pm25': y_w} for X_w, y_w in zip(X, y)])
+        
+    print("---------\t Dataset processing completed \t---------")
+    print(f'Time taken: {(time.time()-start_time)/60:.2f} mins')
+
+    return train_data, val_data, test_data
