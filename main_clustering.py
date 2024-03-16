@@ -51,7 +51,7 @@ class LSTM(nn.Module):
         out = self.fc(out)
         return out, h
     
-def train(train_loader, test_loader, input_size, output_size, hidden_size, num_layers, NUM_EPOCHS, LR):
+def train(season, train_loader, test_loader, input_size, output_size, hidden_size, num_layers, NUM_EPOCHS, LR):
 
     model = LSTM(input_size, hidden_size, num_layers, output_size, bidirectional=True)
     model.to(device)
@@ -59,7 +59,7 @@ def train(train_loader, test_loader, input_size, output_size, hidden_size, num_l
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
-    model_path = f'{model_dir}/BLSTM_clustering_{hidden_size}.pth.tar'
+    model_path = f'{model_dir}/BLSTM_clustering_{season}_{hidden_size}.pth.tar'
     model_file = Path(model_path)
 
     start_time = time.time()
@@ -114,7 +114,7 @@ def train(train_loader, test_loader, input_size, output_size, hidden_size, num_l
                 'val_losses': val_losses
             }
 
-            torch.save(state, f'{model_dir}/BLSTM_clustering_{hidden_size}.pth.tar')
+            torch.save(state, model_path)
 
             if (epoch+1)%50 == 0:
                 print(f'Epoch: {epoch+1}/{NUM_EPOCHS}, train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}, \
@@ -147,17 +147,65 @@ def train(train_loader, test_loader, input_size, output_size, hidden_size, num_l
 
     return np.array(X), np.array(locs)
 
+def seasonal_training(df, locs, season):
+
+    print(f"---------\t Season Info: {season[0]},  start_date={season[1]}, end_date={season[2]} \t---------")
+
+    df = df[(df['timestamp'] >= season[1]) & (df['timestamp'] < season[2])]
+    print(f'Data Shape: {df.shape}')
+    df_grouped = df.groupby(['latitude', 'longitude'])
+
+    data = []
+
+    for loc, group in df_grouped:
+        data.append({'loc': loc, 'pm25': group['pm25'].tolist()})
+
+    locs = list(locs)
+    train_locs, test_locs = locs[:len(locs) // 2], locs[len(locs) // 2:]
+    print(len(locs), len(train_locs), len(test_locs))
+
+    train_data, test_data = [], []
+    
+    for row in data:
+        if row['loc'] in train_locs: train_data.append(row)
+        else: test_data.append(row)
+    
+    BATCH_SIZE, LR, NUM_EPOCHS = 64, 1e-3, 500
+    INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE = None, [32, 64, 128], 2, None
+
+    train_dataset = CustomDataset(train_data)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    test_dataset = CustomDataset(test_data)
+    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+                
+    for hs in HIDDEN_SIZE:
+        for _, inputs, labels in train_loader:
+            INPUT_SIZE, OUTPUT_SIZE = inputs.shape[-1], labels.shape[-1]
+            INPUT_SHAPE, OUTPUT_SHAPE = inputs.shape, labels.shape
+            break
+
+        print(INPUT_SHAPE, OUTPUT_SHAPE, INPUT_SIZE, OUTPUT_SIZE)
+
+        embeddings, locs = train(season[0], train_loader, test_loader, INPUT_SIZE, OUTPUT_SIZE, hs, NUM_LAYERS, NUM_EPOCHS, LR)
+
+        data = {}
+        for loc, emb in zip(locs, embeddings):
+            data[(loc[0], loc[1])] = emb
+
+        with open(f'{data_bihar}/bihar_embedding_{season[0]}_{hs}.pkl', 'wb') as f:
+            pickle.dump(data, f)
+
 if __name__ == '__main__':
 
     bihar = gpd.read_file(f'{data_bihar}/bihar.json')
-    file = f'{data_bihar}/Bihar_May_Jan_2024_PM.csv'
+    file = f'{data_bihar}/AMRIT_PM25_DATA.csv'
     df = pd.read_csv(file)
-    df = df[[x for x in df.columns if x not in {'Block', 'District'}]]
-
-    ts = [pd.Timestamp(x) for x in df.columns if x not in {'latitude', 'longitude'}]
-    data, locs = [], []
+    df = df[df['State'] == 'BIHAR']
+    df = df[[x for x in df.columns if x not in {'Deviceid', 'State', 'Block', 'District', 'Devicemfg', 'Remark'}]]
 
     cols = {'timestamp': 'datetime64[ns]',  'latitude': np.float64, 'longitude': np.float64, 'pm25': np.float64}
+    ts = [pd.Timestamp(x) for x in df.columns if x not in {'latitude', 'longitude'}]
 
     df_new = pd.DataFrame(columns=cols)
     locs = set()
@@ -180,7 +228,7 @@ if __name__ == '__main__':
         df_temp['pm25'] = pm25
         
         df_new = pd.concat([df_new, df_temp])
-
+    
     df_temp = df_new.copy(deep=True)
     df_temp['timestamp'] = df_temp['timestamp'].values.astype(float)
 
@@ -189,83 +237,41 @@ if __name__ == '__main__':
     data_new = imputer.fit_transform(data_new)
 
     df_new['pm25'] = data_new[:, -1].clip(0, 500)
+    print(df_new.head())
 
-    df_grouped = df_new.groupby(['latitude', 'longitude'])
+    seasons = [['monsoon', pd.Timestamp(year=2023, month=6, day=1), pd.Timestamp(year=2024, month=10, day=1)],\
+               ['post_monsoon', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2024, month=12, day=1)],\
+                ['winter', pd.Timestamp(year=2023, month=12, day=1), pd.Timestamp(year=2024, month=3, day=1)],\
+                ['combined', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2024, month=3, day=1)]]
 
-    for loc, group in df_grouped:
-        data.append({'loc': loc, 'pm25': group['pm25'].tolist()})
+    for season in seasons:
+        seasonal_training(df_new, locs, season)
 
-    # print(df_new['pm25'].min(), df_new['pm25'].max())
+    # # print(embeddings.shape, locs.shape)
 
-    locs = list(locs)
-    train_locs, test_locs = locs[:len(locs) // 2], locs[len(locs) // 2:]
-    print(len(locs), len(train_locs), len(test_locs))
+    # # lats = [x[0] for x in locs]
+    # # lons = [x[1] for x in locs]
 
-    train_data, test_data = [], []
-    
-    for row in data:
-        if row['loc'] in train_locs: train_data.append(row)
-        else: test_data.append(row)
-    
-    BATCH_SIZE, LR, NUM_EPOCHS = 64, 1e-3, 500
-    INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE = None, [32, 64, 128], 2, None
+    # # scores = []
+    # # K = [i for i in range(2, 21)]
 
-    train_dataset = CustomDataset(train_data)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    # # for k in K:
+    # #     kmeans = KMeans(n_clusters=k).fit(embeddings)
+    # #     scores.append(kmeans.inertia_)
 
-    test_dataset = CustomDataset(test_data)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    # # plt.plot(K, scores)
+    # # plt.xticks(K, rotation='vertical')
+    # # plt.savefig(f'{plot_dir}/elbow.jpg', dpi=400)
 
-    # criterion = nn.MSELoss()
-    # A, B = torch.Tensor([[1, 2], [3, 4], [5, 6]]), torch.Tensor([[0, 0], [0, 0], [0, 0]])
-    # print(criterion(A, B).detach().cpu().numpy())
+    # # labels = KMeans(n_clusters=8).fit_predict(X)
 
-    # for lr in LR:
-    #     for hs in HIDDEN_SIZE:
-    #         for nl in NUM_LAYERS:
-                
-    for hs in HIDDEN_SIZE:
-        for _, inputs, labels in train_loader:
-            INPUT_SIZE, OUTPUT_SIZE = inputs.shape[-1], labels.shape[-1]
-            INPUT_SHAPE, OUTPUT_SHAPE = inputs.shape, labels.shape
-            break
+    # # _, ax = plt.subplots(figsize=(10,8))
+    # # # colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:gray', 'tab:olive']
+    # # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
-        print(INPUT_SHAPE, OUTPUT_SHAPE, INPUT_SIZE, OUTPUT_SIZE)
+    # # bihar.plot(ax=ax, color='white', edgecolor='grey', linewidth=0.5)
+    # # scatter = ax.scatter(lons, lats, c=labels, cmap=matplotlib.colors.ListedColormap(colors), marker='o')
 
-        embeddings, locs = train(train_loader, test_loader, INPUT_SIZE, OUTPUT_SIZE, hs, NUM_LAYERS, NUM_EPOCHS, LR)
-
-        data = {}
-        for loc, emb in zip(locs, embeddings):
-            data[(loc[0], loc[1])] = emb
-
-        with open(f'{data_dir}/bihar_embedding_{hs}.pkl', 'wb') as f:
-            pickle.dump(data, f)
-
-    # print(embeddings.shape, locs.shape)
-
-    # lats = [x[0] for x in locs]
-    # lons = [x[1] for x in locs]
-
-    # scores = []
-    # K = [i for i in range(2, 21)]
-
-    # for k in K:
-    #     kmeans = KMeans(n_clusters=k).fit(embeddings)
-    #     scores.append(kmeans.inertia_)
-
-    # plt.plot(K, scores)
-    # plt.xticks(K, rotation='vertical')
-    # plt.savefig(f'{plot_dir}/elbow.jpg', dpi=400)
-
-    # labels = KMeans(n_clusters=8).fit_predict(X)
-
-    # _, ax = plt.subplots(figsize=(10,8))
-    # # colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:gray', 'tab:olive']
-    # colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
-
-    # bihar.plot(ax=ax, color='white', edgecolor='grey', linewidth=0.5)
-    # scatter = ax.scatter(lons, lats, c=labels, cmap=matplotlib.colors.ListedColormap(colors), marker='o')
-
-    # ax.set_axis_off()
-    # plt.savefig(f'{plot_dir}/clusters.jpg', dpi=400)
-    # plt.close()
+    # # ax.set_axis_off()
+    # # plt.savefig(f'{plot_dir}/clusters.jpg', dpi=400)
+    # # plt.close()
