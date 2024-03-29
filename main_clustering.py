@@ -170,7 +170,7 @@ def seasonal_training(df, locs, season):
         if row['loc'] in train_locs: train_data.append(row)
         else: test_data.append(row)
     
-    BATCH_SIZE, LR, NUM_EPOCHS = 64, 1e-3, 500
+    BATCH_SIZE, LR, NUM_EPOCHS = 64, 1e-3, [700, 600, 500]
     INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE = None, [32, 64, 128], 2, None
 
     train_dataset = CustomDataset(train_data)
@@ -179,7 +179,7 @@ def seasonal_training(df, locs, season):
     test_dataset = CustomDataset(test_data)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
                 
-    for hs in HIDDEN_SIZE:
+    for num_epochs, hs in zip(NUM_EPOCHS, HIDDEN_SIZE):
         for _, inputs, labels in train_loader:
             INPUT_SIZE, OUTPUT_SIZE = inputs.shape[-1], labels.shape[-1]
             INPUT_SHAPE, OUTPUT_SHAPE = inputs.shape, labels.shape
@@ -187,7 +187,7 @@ def seasonal_training(df, locs, season):
 
         print(INPUT_SHAPE, OUTPUT_SHAPE, INPUT_SIZE, OUTPUT_SIZE)
 
-        embeddings, locs = train(season[0], train_loader, test_loader, INPUT_SIZE, OUTPUT_SIZE, hs, NUM_LAYERS, NUM_EPOCHS, LR)
+        embeddings, locs = train(season[0], train_loader, test_loader, INPUT_SIZE, OUTPUT_SIZE, hs, NUM_LAYERS, num_epochs, LR)
 
         data = {}
         for loc, emb in zip(locs, embeddings):
@@ -237,10 +237,10 @@ if __name__ == '__main__':
     data_new = imputer.fit_transform(data_new)
 
     df_new['pm25'] = data_new[:, -1].clip(0, 500)
-    print(df_new.head())
+    # print(df_new.head())
 
-    seasons = [['monsoon', pd.Timestamp(year=2023, month=6, day=1), pd.Timestamp(year=2024, month=10, day=1)],\
-               ['post_monsoon', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2024, month=12, day=1)],\
+    seasons = [['monsoon', pd.Timestamp(year=2023, month=6, day=1), pd.Timestamp(year=2023, month=10, day=1)],\
+               ['post_monsoon', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2023, month=12, day=1)],\
                 ['winter', pd.Timestamp(year=2023, month=12, day=1), pd.Timestamp(year=2024, month=3, day=1)],\
                 ['combined', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2024, month=3, day=1)]]
 

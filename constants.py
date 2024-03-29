@@ -1,16 +1,14 @@
-import numpy as np
-
 base_dir = '/home/malay/pm25/pm2.5'
-data_dir = f'/hdd/malay'
-data_bihar = f'{data_dir}/bihar'
-model_dir = f'{data_dir}/models'
-plot_dir = f'{data_dir}/plots'
-bihar_plot_dir = f'{plot_dir}/bihar'
-days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-COLUMNS_DICT = {'timestamp': 'datetime64[ns]', 'latitude': np.float64, 'longitude': np.float64, 'rh': np.float64,\
-                'temp': np.float64,'blh': np.float64, 'u10': np.float64, 'v10': np.float64, 'kx': np.float64, 'sp': np.float64,\
-                    'tp': np.float64, 'pm25': np.float64}
+data_dir = f'/hdd/malay/'
+data_bihar = f'{data_dir}/bihar/'
+model_dir = f'{data_dir}/models/'
+plot_dir = f'{data_dir}/plots/'
+bihar_plot_dir = f'{plot_dir}/bihar/'
+
+METEO_COLUMNS_DICT = {'timestamp': 'datetime64[ns]', 'district': object, 'block': object, 'latitude': float, 'longitude': float,\
+                                 'rh': float, 'temp': float, 'pm25': float}
+COLUMNS_DICT = {'timestamp': 'datetime64[ns]', 'latitude': float, 'longitude': float, 'rh': float, 'temp': float,'blh': float, 'u10': float,\
+                'v10': float, 'kx': float, 'sp': float, 'tp': float, 'pm25': float}
 THRESHOLD = 9_000
 LOWER_BOUND = 0
 UPPER_BOUND = 600

@@ -17,15 +17,6 @@ from PIL import Image
 from itertools import product
 import argparse
 
-def log_list_content(log_file, my_list):
-    # Configure logging to write to a file
-    logging.basicConfig(filename=log_file, level=logging.DEBUG)
-
-    # Log the content of the list
-    logging.info("List content:")
-    for item in my_list:
-        logging.info(str(item))
-
 def convert_era5_netcdf_to_dict(pbl_file, other_params_file, variable_names_pbl, variable_names_other):
     # Open the NetCDF file using xarray
     ds_pbl = xr.open_dataset(pbl_file)

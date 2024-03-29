@@ -1,93 +1,87 @@
 import numpy as np
 from scipy.spatial import distance
+import time
 import matplotlib.pyplot as plt
+import networkx as nx
 import torch
-import torch_geometric
-from sklearn.preprocessing import StandardScaler
-from torch_geometric.utils import dense_to_sparse, to_dense_adj
+import torch.nn as nn
+# import torch_geometric
+# from sklearn.preprocessing import StandardScaler
+# from torch_geometric.utils import dense_to_sparse, to_dense_adj, degree
 from torch_geometric.data import Data
-from geopy.distance import geodesic
-from metpy.units import units
-import metpy.calc as calc
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import GCNConv
+# from geopy.distance import geodesic
+# from metpy.units import units
+# import metpy.calc as calc
 from constants import *
 from utils import *
+from dataset.SpatioTemporalDataset import loadSpatioTemporalData
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-class Node():
-    def __init__(self, features, label, loc):
-        self.loc = loc
-        self.features = features
-        self.label = label
+class GNNLSTM(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, device):
+        super(GNNLSTM, self).__init__()
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.output_dim = output_dim
+        self.device = device
 
-class Edge():
-    def __init__(self, source, target):
-        self.source = source
-        self.target = target
+        self.embedding = nn.Linear(self.input_dim, self.hidden_dim)
+        self.lstm_cell = nn.LSTMCell(self.hidden_dim, self.hidden_dim)
+        self.conv = GCNConv(self.hidden_dim, self.hidden_dim, add_self_loops=True)
+        self.fc = nn.Linear(self.hidden_dim, self.output_dim)
 
-class GraphDataset():
-    def __init__(self):
-        pass
+    def forward(self, x, edge_index):
+        h, c = torch.zeros(x.size(0), self.hidden_dim), torch.zeros(x.size(0), self.hidden_dim)
+        h, c = h.to(self.device), c.to(self.device)
 
-def distance_matrix(locs):
+        for t in range(x.size(1)):
+            input_features = self.embedding(x[:, t, :])
+            h, c = self.lstm_cell(input_features, (h, c))
+            h = self.conv(h, edge_index)
 
-    dist = distance.pdist(locs, lambda u, v: geodesic(u, v).kilometers)
-    num_nodes = len(locs)
-
-    # num_dist = (num_nodes * (num_nodes-1))//2
-    # print(num_nodes, num_dist, len(dist))
-    
-    dist_u, dist_l = np.zeros((num_nodes, num_nodes)), np.zeros((num_nodes, num_nodes))
-
-    mask = np.triu_indices(num_nodes, k=1)
-
-    dist_u[mask] = dist
-    dist_l = dist_u.T
-
-    return dist_u + dist_l 
-
+        out = self.fc(h)
+        return out
 
 if __name__ == '__main__':
     
-    train_locs = load_locs_as_tuples(f'{data_bihar}/train_locations.txt')
-    val_locs = load_locs_as_tuples(f'{data_bihar}/val_locations.txt')
-    test_locs = load_locs_as_tuples(f'{data_bihar}/test_locations.txt')
+    # train_locs = load_locs_as_tuples(f'{data_bihar}/train_locations.txt')
+    # val_locs = load_locs_as_tuples(f'{data_bihar}/val_locations.txt')
+    # test_locs = load_locs_as_tuples(f'{data_bihar}/test_locations.txt')
+
+    DIST_THRESH, FW, BATCH_SIZE, LR, NUM_EPOCHS = 100, 12, 512, 2e-2, 5
 
     data_file = f'{data_bihar}/bihar_512_sensor_era5_rnn.pkl'
-    df = pd.read_pickle(data_file)
-    locs, nodes, edges = [], [], []
 
-    scaler = StandardScaler()
-    data = df[[x for x in df.columns if x not in {'timestamp', 'latitude', 'longitude', 'pm25'}]].to_numpy()
-    data = scaler.fit_transform(data)
-    df[[x for x in df.columns if x not in {'timestamp', 'latitude', 'longitude', 'pm25'}]] = data
+    locs, node_features, node_labels, source_nodes, target_nodes = loadSpatioTemporalData(data_file, FW, DIST_THRESH)
+    dataset = [Data(x=node_features, edge_index=torch.stack((source_nodes, target_nodes)), y=node_labels)]
 
-    df_grouped = df.groupby(['latitude', 'longitude'])
-    for loc, group in df_grouped:
+    input_dim, hidden_dim, output_dim = node_features.size(-1), 64, node_labels.size(-1)
+    print(input_dim, hidden_dim, output_dim)
 
-        loc = (loc[0].astype(np.float32), loc[1].astype(np.float32))
-        locs.append(loc)
-        data = group.to_numpy()
-        # Since first three columns are timestamp, latitude and longitude respectively
-        X, y = data[:, 3:-1], data[:, -1]
+    model = GNNLSTM(input_dim, hidden_dim, output_dim, device)
+    model.to(device)
 
-        nodes.append(Node(X.astype(np.float32), y.astype(np.float32), loc))
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
-    dist_mat = distance_matrix(locs)
+    loader = DataLoader(dataset, batch_size=1)
+    # losses = []
 
-    cond = np.logical_and(np.where(dist_mat <= 100, True, False), np.where(dist_mat > 0, True, False)) 
-    dist_mat = np.logical_and(cond, dist_mat)
+    for epoch in range(NUM_EPOCHS):
+        start_time = time.time()
 
-    r, c = np.where(dist_mat == True)
+        for data in loader:
+            x, y, edge_index = data.x.to(device), data.y[:, -1, :].to(device), data.edge_index.to(device)
 
-    edges = [Edge(x, y) for x, y in zip(r, c)]
+            preds = model(x, edge_index)
+            
+            loss = torch.sqrt(criterion(y, preds))
+            loss.backward()
+            optimizer.step()
 
-    node_features_tensor = torch.tensor(np.array([node.features for node in nodes]))
-    node_labels_tensor = torch.tensor(np.array([node.label for node in nodes]))
-    
-    source_nodes_tensor = torch.tensor(np.array([edge.source for edge in edges]))
-    target_nodes_tensor = torch.tensor(np.array([edge.target for edge in edges]))
+            # losses.append(loss.item())
 
-    graph = Data(x=node_features_tensor, y=node_labels_tensor, edge_index=[source_nodes_tensor, target_nodes_tensor])
-
-    print(graph)
-
-    print(node_features_tensor.shape, node_labels_tensor.shape, source_nodes_tensor.shape, target_nodes_tensor.shape)
+        print(f'Epoch: {epoch+1}/{NUM_EPOCHS}, train_loss: {loss.item():.4f},\
+            time_taken: {(time.time()-start_time)/60:.2f} mins')
