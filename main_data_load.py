@@ -28,17 +28,12 @@ if __name__ == '__main__':
     
     '''----------------- All the file locations are declared here -----------------'''
 
-    # Mapping: File Name to the corresponding row in which the timestamp information starts
-    files = {'Bihar_536_Sensor_Data_Sep_2023_Screened.csv': 7, 'Bihar_536_Sensor_Data_Oct_2023_Screened.csv': 7,\
-        'Bihar_536_Sensor_Data_Nov_2023_Screened.csv': 6, 'Bihar_536_Sensor_Data_Jan_2024_Screened.csv': 6,\
-        'Bihar_536_Sensor_Data_Dec_2023_Screened.csv': 6, 'Bihar_512_Sensor_Data_May_Aug_Screened_Hourly.csv': 6}
-
     pbl_file = f'{data_bihar}/PBLH_may_Dec_2023.nc'
     other_params_file = f'{data_bihar}/Era5_data_May_Dec_2023.nc'
     geojson_file = f'{data_bihar}/bihar.json'
-    out_meteo_file = f'{data_bihar}/bihar_meteo_may_dec.pkl'
-    output_meteo_era5_file = f'{data_bihar}/bihar_meteo_era5_may_dec.pkl'
-    output_meteo_era5_imputed_file = f'{data_bihar}/bihar_meteo_era5_may_dec_knn_imputed.pkl'
+    out_meteo_file = f'{data_bihar}/bihar_meteo_may_jan.pkl'
+    output_meteo_era5_file = f'{data_bihar}/bihar_meteo_era5_may_jan.pkl'
+    output_meteo_era5_imputed_file = f'{data_bihar}/bihar_meteo_era5_may_jan_mean_imputed.pkl'
 
     region = gpd.read_file(geojson_file)
 
@@ -47,9 +42,14 @@ if __name__ == '__main__':
 
     '''----------------- All the variables are declared here -----------------'''
 
-    start_date, end_date = pd.Timestamp('2023-05-01 00:00:00'), pd.Timestamp('2024-01-01 00:00:00')
-    variable_names_pbl = ['blh']
-    variable_names_other = ['u10', 'v10', 'kx', 'sp', 'tp']
+    start_date, end_date = pd.Timestamp('2023-05-01 00:00:00'), pd.Timestamp('2024-02-01 00:00:00')
+
+    # Mapping: File Name to the corresponding row in which the timestamp information starts
+    files = {'Bihar_536_Sensor_Data_Sep_2023_Screened.csv': 7, 'Bihar_536_Sensor_Data_Oct_2023_Screened.csv': 7,\
+        'Bihar_536_Sensor_Data_Nov_2023_Screened.csv': 6, 'Bihar_536_Sensor_Data_Jan_2024_Screened.csv': 6,\
+        'Bihar_536_Sensor_Data_Dec_2023_Screened.csv': 6, 'Bihar_512_Sensor_Data_May_Aug_Screened_Hourly.csv': 6}
+    
+    params_files = ['era5_may_dec_2023.nc', 'era5_jan_2024.nc']
 
     '''----------------- Variables declaration complete -----------------'''
 
@@ -77,8 +77,7 @@ if __name__ == '__main__':
     if Path(output_meteo_era5_file).is_file():
         df = pd.read_pickle(output_meteo_era5_file)
     else:
-        df = create_era5_dataframe(region, df, pbl_file, other_params_file, variable_names_pbl, variable_names_other, start_date,\
-                                   end_date, output_meteo_era5_file)
+        df = create_era5_dataframe(params_files, df, output_meteo_era5_file)
     
     print('******\t\tERA5 Data loading completed\t\t******')
     print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
@@ -87,7 +86,7 @@ if __name__ == '__main__':
 
     print(df.count())
     for col, type in zip(df.columns, df.dtypes):
-        if type == float: print(col, df[col].min(), df[col].max())
+        if type == np.float64 or type == np.float32: print(col, df[col].min(), df[col].max())
     
     '''----------------- Data Imputation start -----------------'''
 
@@ -97,13 +96,20 @@ if __name__ == '__main__':
     if Path(output_meteo_era5_imputed_file).is_file():
         df = pd.read_pickle(output_meteo_era5_imputed_file)
     else:
-        df = impute_data(df, output_meteo_era5_imputed_file, method='knn')
+        df = impute_data(df, output_meteo_era5_imputed_file, method='mean')
     
     print('******\t\tData Imputation completed\t\t******')
     print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
 
     '''----------------- Data Imputation end -----------------'''
 
-    print(df.count())
-    for col, type in zip(df.columns, df.dtypes):
-        if type == float: print(col, df[col].min(), df[col].max())
+    # print(df.count())
+    # for col, type in zip(df.columns, df.dtypes):
+    #     if type == np.float64 or type == np.float32: print(col, df[col].min(), df[col].max())
+
+    # df_g = df.groupby(['latitude', 'longitude'])
+    
+    # for loc, group in df_g:
+    #     for col, type in zip(group.columns, group.dtypes):
+    #         if type == np.float64 or type == np.float32: print(col, len(group[col].unique()), group[col].min(), group[col].max())
+    #     break

@@ -31,6 +31,8 @@ def distance_matrix(locs):
 
 def loadSpatioTemporalData(data_file, FW, DIST_THRESH):
     df = pd.read_pickle(data_file)
+    df = df[[x for x in df.columns if x not in {'block', 'district'}]]
+
     locs, nodes, edges = [], [], []
 
     scaler = StandardScaler()

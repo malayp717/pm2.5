@@ -1,8 +1,8 @@
 import numpy as np
-from scipy.spatial import distance
+# from scipy.spatial import distance
 import time
-import matplotlib.pyplot as plt
-import networkx as nx
+# import matplotlib.pyplot as plt
+# import networkx as nx
 import torch
 import torch.nn as nn
 # import torch_geometric
@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv
+# from torchinfo import summary
 # from geopy.distance import geodesic
 # from metpy.units import units
 # import metpy.calc as calc
@@ -50,9 +51,9 @@ if __name__ == '__main__':
     # val_locs = load_locs_as_tuples(f'{data_bihar}/val_locations.txt')
     # test_locs = load_locs_as_tuples(f'{data_bihar}/test_locations.txt')
 
-    DIST_THRESH, FW, BATCH_SIZE, LR, NUM_EPOCHS = 100, 12, 512, 2e-2, 5
+    DIST_THRESH, FW, BATCH_SIZE, LR, NUM_EPOCHS = 100, 12, 512, 5e-2, 10
 
-    data_file = f'{data_bihar}/bihar_512_sensor_era5_rnn.pkl'
+    data_file = f'{data_bihar}/bihar_meteo_era5_may_jan_knn_imputed.pkl'
 
     locs, node_features, node_labels, source_nodes, target_nodes = loadSpatioTemporalData(data_file, FW, DIST_THRESH)
     dataset = [Data(x=node_features, edge_index=torch.stack((source_nodes, target_nodes)), y=node_labels)]
