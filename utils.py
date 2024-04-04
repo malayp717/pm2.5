@@ -45,6 +45,9 @@ def load_locs_as_tuples(file_path):
 
     return tuples_list
 
+def write_locs(file_path, locs):
+    np.savetxt(file_path, locs, fmt='%f')
+    
 '''
     Define a custom upper and lower limit for XGBoost predictions
 '''

@@ -33,7 +33,7 @@ if __name__ == '__main__':
     geojson_file = f'{data_bihar}/bihar.json'
     out_meteo_file = f'{data_bihar}/bihar_meteo_may_jan.pkl'
     output_meteo_era5_file = f'{data_bihar}/bihar_meteo_era5_may_jan.pkl'
-    output_meteo_era5_imputed_file = f'{data_bihar}/bihar_meteo_era5_may_jan_mean_imputed.pkl'
+    output_meteo_era5_imputed_file = f'{data_bihar}/bihar_meteo_era5_may_jan_iterative_imputed.pkl'
 
     region = gpd.read_file(geojson_file)
 
@@ -96,20 +96,13 @@ if __name__ == '__main__':
     if Path(output_meteo_era5_imputed_file).is_file():
         df = pd.read_pickle(output_meteo_era5_imputed_file)
     else:
-        df = impute_data(df, output_meteo_era5_imputed_file, method='mean')
+        df = impute_data(df, output_meteo_era5_imputed_file, method='iterative')
     
     print('******\t\tData Imputation completed\t\t******')
     print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
 
     '''----------------- Data Imputation end -----------------'''
 
-    # print(df.count())
-    # for col, type in zip(df.columns, df.dtypes):
-    #     if type == np.float64 or type == np.float32: print(col, df[col].min(), df[col].max())
-
-    # df_g = df.groupby(['latitude', 'longitude'])
-    
-    # for loc, group in df_g:
-    #     for col, type in zip(group.columns, group.dtypes):
-    #         if type == np.float64 or type == np.float32: print(col, len(group[col].unique()), group[col].min(), group[col].max())
-    #     break
+    print(df.count())
+    for col, type in zip(df.columns, df.dtypes):
+        if type == np.float64 or type == np.float32: print(col, df[col].min(), df[col].max())

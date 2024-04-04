@@ -1,27 +1,22 @@
 import time
+import pickle
 import numpy as np
 import pandas as pd
-import matplotlib
-import matplotlib.pyplot as plt
+# import matplotlib
+# import matplotlib.pyplot as plt
 from pathlib import Path
-from shapely.geometry import Point, Polygon
 import geopandas as gpd
-from scipy.interpolate import interp1d
-from scipy.cluster.hierarchy import dendrogram, linkage
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.experimental import enable_iterative_imputer
-from sklearn.impute import IterativeImputer
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import warnings
 warnings.filterwarnings('ignore')
 from constants import *
-import pickle
+from data.eda_utils import impute
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-class CustomDataset(Dataset):
+class TimeSeriesDataset(Dataset):
     def __init__(self, data):
         self.data = data
 
@@ -171,12 +166,12 @@ def seasonal_training(df, locs, season):
         else: test_data.append(row)
     
     BATCH_SIZE, LR, NUM_EPOCHS = 64, 1e-3, [700, 600, 500]
-    INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE = None, [32, 64, 128], 2, None
+    INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, OUTPUT_SIZE = None, [64, 128, 256], 2, None
 
-    train_dataset = CustomDataset(train_data)
+    train_dataset = TimeSeriesDataset(train_data)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    test_dataset = CustomDataset(test_data)
+    test_dataset = TimeSeriesDataset(test_data)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
                 
     for num_epochs, hs in zip(NUM_EPOCHS, HIDDEN_SIZE):
@@ -200,44 +195,60 @@ if __name__ == '__main__':
 
     bihar = gpd.read_file(f'{data_bihar}/bihar.json')
     file = f'{data_bihar}/AMRIT_PM25_DATA.csv'
-    df = pd.read_csv(file)
-    df = df[df['State'] == 'BIHAR']
-    df = df[[x for x in df.columns if x not in {'Deviceid', 'State', 'Block', 'District', 'Devicemfg', 'Remark'}]]
+    out_file = f'{data_bihar}/bihar_clustering_pm25.csv'
 
-    cols = {'timestamp': 'datetime64[ns]',  'latitude': np.float64, 'longitude': np.float64, 'pm25': np.float64}
-    ts = [pd.Timestamp(x) for x in df.columns if x not in {'latitude', 'longitude'}]
+    if Path(out_file).is_file():
+        df_new = pd.read_csv(out_file)
+    else:
+        df = pd.read_csv(file)
+        df = df[df['State'] == 'BIHAR']
+        df = df[[x for x in df.columns if x not in {'Deviceid', 'State', 'Block', 'District', 'Devicemfg', 'Remark'}]]
 
-    df_new = pd.DataFrame(columns=cols)
-    locs = set()
+        cols = {'timestamp': 'datetime64[ns]',  'latitude': np.float64, 'longitude': np.float64, 'pm25': np.float64}
+        ts = [pd.Timestamp(x) for x in df.columns if x not in {'latitude', 'longitude'}]
 
-    for _, row in df.iterrows():
-        loc, pm25 = row.to_numpy()[:2], row.to_numpy()[2:]
-        lat, lon = loc[0], loc[1]
+        df_new = pd.DataFrame(columns=cols)
+        locs = set()
 
-        if np.count_nonzero(np.isnan(pm25)) >= 6_000: continue
+        for _, row in df.iterrows():
+            loc, pm25 = row.to_numpy()[:2], row.to_numpy()[2:]
+            lat, lon = loc[0], loc[1]
 
-        if (lat, lon) not in locs: locs.add((lat, lon))
-        else: continue
+            if np.count_nonzero(np.isnan(pm25)) >= 6_000: continue
 
-        lat, lon = [loc[0]] * len(pm25), [loc[1]] * len(pm25)
+            if (lat, lon) not in locs: locs.add((lat, lon))
+            else: continue
 
-        df_temp = pd.DataFrame(columns=cols)
-        df_temp['timestamp'] = ts
-        df_temp['latitude'] = lat
-        df_temp['longitude'] = lon
-        df_temp['pm25'] = pm25
+            lat, lon = [loc[0]] * len(pm25), [loc[1]] * len(pm25)
+
+            df_temp = pd.DataFrame(columns=cols)
+            df_temp['timestamp'] = ts
+            df_temp['latitude'] = lat
+            df_temp['longitude'] = lon
+            df_temp['pm25'] = pm25
+            
+            df_new = pd.concat([df_new, df_temp])
+
+        print(df_new.head())
+
+        for col, type in zip(df_new.columns, df_new.dtypes):
+            if type == np.float64 or type == np.float32: print(col, df_new[col].min(), df_new[col].max())
         
-        df_new = pd.concat([df_new, df_temp])
-    
-    df_temp = df_new.copy(deep=True)
-    df_temp['timestamp'] = df_temp['timestamp'].values.astype(float)
+        df_temp = df_new.copy(deep=True)
+        df_temp['timestamp'] = df_temp['timestamp'].values.astype(float)
 
-    data_new = df_temp.to_numpy()
-    imputer = IterativeImputer(random_state=0)
-    data_new = imputer.fit_transform(data_new)
+        data_new = df_temp.to_numpy()
+        imputed_data = impute(data_new, method='iterative')
 
-    df_new['pm25'] = data_new[:, -1].clip(0, 500)
-    # print(df_new.head())
+        df_new['pm25'] = imputed_data[:, -1]
+        # print(df_new['pm25'].min(), df_new['pm25'].max())
+        df_new = df_new.sort_values(by='timestamp')
+
+        for col, type in zip(df_new.columns, df_new.dtypes):
+            if type == np.float64 or type == np.float32: print(col, df_new[col].min(), df_new[col].max())
+
+        df_new.to_csv(out_file, index=False)
+        # print(df_new.head())
 
     seasons = [['monsoon', pd.Timestamp(year=2023, month=6, day=1), pd.Timestamp(year=2023, month=10, day=1)],\
                ['post_monsoon', pd.Timestamp(year=2023, month=10, day=1), pd.Timestamp(year=2023, month=12, day=1)],\

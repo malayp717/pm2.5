@@ -1,10 +1,15 @@
 import numpy as np
-import pandas as pd
+# import pandas as pd
 from scipy.spatial import distance
-from sklearn.preprocessing import StandardScaler
+# from sklearn.preprocessing import StandardScaler
 import torch
 from geopy.distance import geodesic
-from metpy.units import units
+# from metpy.units import units
+# import h5py
+# from pathlib import Path
+from torch_geometric.data import Data, Dataset
+import pickle
+from constants import *
 
 class Node():
     def __init__(self, features, label, loc):
@@ -15,59 +20,72 @@ class Node():
 class Edge():
     def __init__(self, source, target):
         self.source = source
-        self.target = target
+        self.target = target 
 
-def distance_matrix(locs):
-    dist = distance.pdist(locs, lambda u, v: geodesic(u, v).kilometers)
-    num_nodes = len(locs)
+class SpatioTemporalDataset(Dataset):
+
+    def distance_matrix(self, locs):
+        dist = distance.pdist(locs, lambda u, v: geodesic(u, v).kilometers)
+        num_nodes = len(locs)
+        
+        dist_u, dist_l = np.zeros((num_nodes, num_nodes)), np.zeros((num_nodes, num_nodes))
+        mask = np.triu_indices(num_nodes, k=1)
+
+        dist_u[mask] = dist
+        dist_l = dist_u.T
+
+        return dist_u + dist_l
     
-    dist_u, dist_l = np.zeros((num_nodes, num_nodes)), np.zeros((num_nodes, num_nodes))
-    mask = np.triu_indices(num_nodes, k=1)
+    def generate_edges(self, locs):
+        dist_mat = self.distance_matrix(locs)
+        cond = np.logical_and(np.where(dist_mat <= DIST_THRESH, True, False), np.where(dist_mat > 0, True, False)) 
+        dist_mat = np.logical_and(cond, dist_mat)
 
-    dist_u[mask] = dist
-    dist_l = dist_u.T
+        r, c = np.where(dist_mat == True)
+        edges = [Edge(x, y) for x, y in zip(r, c)]
 
-    return dist_u + dist_l
+        source_nodes_tensor = torch.tensor(np.array([edge.source for edge in edges]))
+        target_nodes_tensor = torch.tensor(np.array([edge.target for edge in edges]))
 
-def loadSpatioTemporalData(data_file, FW, DIST_THRESH):
-    df = pd.read_pickle(data_file)
-    df = df[[x for x in df.columns if x not in {'block', 'district'}]]
-
-    locs, nodes, edges = [], [], []
-
-    scaler = StandardScaler()
-    data = df[[x for x in df.columns if x not in {'timestamp', 'latitude', 'longitude', 'pm25'}]].to_numpy()
-    data = scaler.fit_transform(data)
-    df[[x for x in df.columns if x not in {'timestamp', 'latitude', 'longitude', 'pm25'}]] = data
-
-    df_grouped = df.groupby(['latitude', 'longitude'])
-    for loc, group in df_grouped:
-
-        loc = (loc[0].astype(np.float32), loc[1].astype(np.float32))
-        locs.append(loc)
-        data = group.to_numpy()
-        # Since first three columns are timestamp, latitude and longitude respectively
-        X, y = data[:, 3:-1], data[:, -1]
-
-        y = np.lib.stride_tricks.sliding_window_view(y, (FW,))
-        X = X[:y.shape[0], :]
-
-        nodes.append(Node(X.astype(np.float32), y.astype(np.float32), loc))
-
-    dist_mat = distance_matrix(locs)
-
-    cond = np.logical_and(np.where(dist_mat <= DIST_THRESH, True, False), np.where(dist_mat > 0, True, False)) 
-    dist_mat = np.logical_and(cond, dist_mat)
-
-    r, c = np.where(dist_mat == True)
-    edges = [Edge(x, y) for x, y in zip(r, c)]
-
-    node_features_tensor = torch.tensor(np.array([node.features for node in nodes]))
-    node_labels_tensor = torch.tensor(np.array([node.label for node in nodes]))
+        return source_nodes_tensor, target_nodes_tensor
     
-    source_nodes_tensor = torch.tensor(np.array([edge.source for edge in edges]))
-    target_nodes_tensor = torch.tensor(np.array([edge.target for edge in edges]))
+    def get_input_dimensions(self):
+        if len(self.data) == 0:
+            return 0, 0, 0
+        
+        row = self.data[0]
+        X, y = None, None
 
-    print(node_features_tensor.shape, node_labels_tensor.shape, source_nodes_tensor.shape, target_nodes_tensor.shape)
+        for ele in row:
+            for _, item in ele.items():
+                X, y = item[0], item[1]
+                break
+            break
 
-    return locs, node_features_tensor, node_labels_tensor, source_nodes_tensor, target_nodes_tensor
+        return X.shape[-1], self.hidden_dim, y.shape[-1]
+
+    def __init__(self, file, locs, hidden_dim):
+        with open(file, 'rb') as f:
+            self.data = pickle.load(f)
+
+        self.locs = locs
+        self.hidden_dim = hidden_dim
+        self.source_nodes, self.target_nodes = self.generate_edges(self.locs)
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        row = self.data[idx]
+        nodes = []
+
+        for ele in row:
+            for loc, item in ele.items():
+                X, y = item[0], item[1]
+                nodes.append(Node(X.astype(np.float32), y.astype(np.float32), loc))
+                break
+
+        node_features = torch.tensor(np.array([node.features for node in nodes]))
+        node_labels = torch.tensor(np.array([node.label for node in nodes]))
+
+        return Data(x=node_features, edge_index=torch.stack((self.source_nodes, self.target_nodes)), y=node_labels)

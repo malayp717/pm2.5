@@ -6,37 +6,6 @@ from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import KNNImputer, SimpleImputer, IterativeImputer
 from sklearn.preprocessing import StandardScaler
 
-class KNN_Imputer():
-  def __init__(self, X, k):
-     self.X = X
-     self.k = k
-
-  def faiss_distance(self, x1):
-    # Configure FAISS index for your data type (float in this case)
-    index = faiss.IndexFlatL2(self.X.shape[1])
-    index.add(self.X)
-    
-    # Find nearest neighbors using FAISS
-    distances, _ = index.search(x1.reshape(1, -1), k=self.k)
-    return distances.flatten()
-
-  # Create KNNImputer using the custom distance metric
-  def impute(self, nan_mask, n_iter=10):
-      
-      for _ in range(n_iter):
-        imputer = SimpleImputer(strategy='mean')  # Or KNNImputer for simpler KNN imputer
-        self.X = imputer.fit_transform(self.X)
-
-        knn_imputer = KNNImputer(n_neighbors=5, metric=self.faiss_distance)
-
-        # Impute only on masked (NaN) locations
-        imputed_masked = knn_imputer.fit_transform(self.X * nan_mask)
-
-        # Combine masked imputed values with original data using the mask
-        self.X[nan_mask] = imputed_masked[nan_mask]
-
-      return self.X
-
 ''' Use inbuilt sklearn functions to fill the missing nan values in the data '''
 def impute(data, method='iterative'):
     assert method == 'knn' or method == 'mean' or method == 'iterative', 'method can only knn, mean or iterative'
@@ -52,7 +21,7 @@ def impute(data, method='iterative'):
         imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
     # Iterative Imputer
     elif method == 'iterative':
-        imputer = IterativeImputer(random_state=0)
+        imputer = IterativeImputer(random_state=0, min_value=0)
     
     imputed_data = imputer.fit_transform(normalized_data)
     return scaler.inverse_transform(imputed_data)
@@ -90,13 +59,7 @@ def impute_data(df, output_meteo_era5_imputed_file, method):
     orig_data['timestamp'] = orig_data['timestamp'].values.astype(float)
 
     orig_data = orig_data.to_numpy()
-    nan_mask = np.isnan(orig_data)
-
-    # imputed_data = impute(orig_data, method=method)
-    if method == 'knn':
-        imputed_data = KNN_Imputer(orig_data, k=5).impute(nan_mask)
-    else:
-        imputed_data = impute(orig_data, method=method)
+    imputed_data = impute(orig_data, method=method)
     # print(imputed_data.shape)
 
     cols = {'timestamp': 'datetime64[ns]', 'block': str, 'district': str, 'latitude': np.float64, 'longitude': np.float64,\
