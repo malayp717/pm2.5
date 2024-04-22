@@ -14,3 +14,11 @@ train:
   forecast_window: 12
   window_size: 600
   lr: 0.005
+
+split:
+  train_start: [[2023, 1, 1], GMT]
+  train_end: [[2023, 12, 31], GMT]
+  val_start: [[2024, 1, 1], GMT]
+  val_end: [[2024, 1, 15], GMT]
+  test_start: [[2024, 1, 16], GMT]
+  test_end: [[2024, 1, 31], GMT]

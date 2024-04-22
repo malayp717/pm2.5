@@ -10,5 +10,9 @@ config_fp = os.path.join(proj_dir, 'config.yaml')
 with open(config_fp, 'r') as f:
     config = yaml.safe_load(f)
 
+class TemporalDataset():
+    def __init__(self, data_fp, locations_fp):
+        pass
+
 if __name__ == '__main__':
     pass
