@@ -1,0 +1,16 @@
+---
+filepath:
+  proj_dir: /home/malay/pm25/pm2.5/
+  data_dir: /hdd/malay/
+  model_dir: /models/
+  plots_dir: /plots/
+  data_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
+  locations_fp: locations.txt
+  bihar_map_fp: bihar.json
+
+train:
+  batch_size: 4
+  epochs: 10
+  forecast_window: 12
+  window_size: 600
+  lr: 0.005

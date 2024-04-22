@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from constants import *
 import pickle
+import argparse
 
 def save_data(in_file, monthwise_split, FW, WS):
 
@@ -24,7 +25,7 @@ def save_data(in_file, monthwise_split, FW, WS):
         df_1 = df[df['timestamp'].dt.month == mnth]
         df_1 = df_1.sort_values(by='timestamp')
         df_grouped = df_1.groupby(['latitude', 'longitude'])
-        out_file = f'{data_bihar}/bihar_fw:{FW}_ws:{WS}_{split}_gnn.pkl'
+        out_file = f'{gnn_data_bihar}/bihar_fw:{FW}_ws:{WS}_{split}_gnn.pkl'
 
         # gnn_data = {}
         ts = len(df_1['timestamp'].unique())
@@ -69,7 +70,15 @@ def save_data(in_file, monthwise_split, FW, WS):
 
 if __name__ == '__main__':
 
-    FW, WS = 12, 600
+    parser = argparse.ArgumentParser()
+
+    # Define command-line arguments
+    parser.add_argument('--fw', help='Forecast Window')
+    parser.add_argument('--ws', help='Window Size')
+
+    args = parser.parse_args()
+
+    FW, WS = int(args.fw), int(args.ws)
     monthwise_split = {1: 'test', 5: 'train', 6: 'train', 7: 'train', 8: 'validation', 9: 'train', 10: 'train', 11: 'train', 12: 'train'}
 
     print(f'---------- NPZ saving start ----------')

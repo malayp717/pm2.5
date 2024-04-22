@@ -88,4 +88,5 @@ class SpatioTemporalDataset(Dataset):
         node_features = torch.tensor(np.array([node.features for node in nodes]))
         node_labels = torch.tensor(np.array([node.label for node in nodes]))
 
-        return Data(x=node_features, edge_index=torch.stack((self.source_nodes, self.target_nodes)), y=node_labels)
+        return node_features, torch.stack((self.source_nodes, self.target_nodes)), node_labels
+        # return Data(x=node_features, edge_index=torch.stack((self.source_nodes, self.target_nodes)), y=node_labels)

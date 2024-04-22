@@ -1,6 +1,7 @@
 base_dir = '/home/malay/pm25/pm2.5'
 data_dir = f'/hdd/malay/'
 data_bihar = f'{data_dir}/bihar/'
+gnn_data_bihar = f'{data_bihar}/graph_dataset/'
 model_dir = f'{data_dir}/models/'
 plot_dir = f'{data_dir}/plots/'
 bihar_plot_dir = f'{plot_dir}/bihar/'
@@ -12,6 +13,6 @@ COLUMNS_DICT = {'timestamp': 'datetime64[ns]', 'latitude': float, 'longitude': f
 THRESHOLD = 9_000
 DIST_THRESH = 100
 LOWER_BOUND = 0
-UPPER_BOUND = 600
+UPPER_BOUND = 1_000
 GRID_SIZE = 1_000
 AREA_BIHAR = 94_163
