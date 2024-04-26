@@ -1,10 +1,11 @@
 ---
 filepath:
   proj_dir: /home/malay/pm25/pm2.5/
-  data_dir: /hdd/malay/
-  model_dir: /models/
-  plots_dir: /plots/
-  data_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
+  data_dir: /hdd/malay/bihar/
+  model_dir: /hdd/malay/models/
+  plots_dir: /hdd/malay/plots/
+  bihar_pkl_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
+  bihar_npy_fp: bihar_may_jan.npy
   locations_fp: locations.txt
   bihar_map_fp: bihar.json
 
@@ -15,10 +16,18 @@ train:
   window_size: 600
   lr: 0.005
 
+threshold:
+  distance: 100
+
+dataset:
+  update: 1
+  data_start: [2023, 5, 1]
+  data_end: [2024, 1, 31]
+
 split:
-  train_start: [[2023, 1, 1], GMT]
-  train_end: [[2023, 12, 31], GMT]
-  val_start: [[2024, 1, 1], GMT]
-  val_end: [[2024, 1, 15], GMT]
-  test_start: [[2024, 1, 16], GMT]
-  test_end: [[2024, 1, 31], GMT]
+  train_start: [2023, 5, 1]
+  train_end: [2023, 12, 31]
+  val_start: [2024, 1, 1]
+  val_end: [2024, 1, 15]
+  test_start: [2024, 1, 16]
+  test_end: [2024, 1, 31]
