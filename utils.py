@@ -176,13 +176,22 @@ def create_timeseries_data(df, station_indexing):
     Output:
         Root Mean Square Value, Spearman R_squared, Spearman p_value, Pearson R_squared, Pearson p_value
 '''
+# def eval_stat(y_pred, y):
+#     RMSE = math.sqrt(mean_squared_error(y_pred, y))
+#     R_squared = stats.spearmanr(y_pred, y.ravel())[0]
+#     p_value = stats.spearmanr(y_pred, y.ravel())[1]
+#     R_squared_pearson = stats.pearsonr(y_pred, y.ravel())[0]
+#     p_value_pearson = stats.pearsonr(y_pred, y.ravel())[1]
+#     return RMSE, R_squared, p_value, R_squared_pearson, p_value_pearson
 def eval_stat(y_pred, y):
     RMSE = math.sqrt(mean_squared_error(y_pred, y))
-    R_squared = stats.spearmanr(y_pred, y.ravel())[0]
-    p_value = stats.spearmanr(y_pred, y.ravel())[1]
-    R_squared_pearson = stats.pearsonr(y_pred, y.ravel())[0]
-    p_value_pearson = stats.pearsonr(y_pred, y.ravel())[1]
-    return RMSE, R_squared, p_value, R_squared_pearson, p_value_pearson
+    std = np.std(y_pred)
+    # R_squared = stats.spearmanr(y_pred, y)[0]
+    # p_value = stats.spearmanr(y_pred, y)[1]
+    # R_squared_pearson = stats.pearsonr(y_pred, y)[0]
+    # p_value_pearson = stats.pearsonr(y_pred, y)[1]
+    # return RMSE, R_squared, p_value, R_squared_pearson, p_value_pearson
+    return RMSE, std
 
 ''' Change input data to a sparse embedding 
     Input:

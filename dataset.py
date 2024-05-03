@@ -21,8 +21,9 @@ locations_fp = data_dir + config['filepath']['locations_fp']
 bihar_map_fp = data_dir + config['filepath']['bihar_map_fp']
 
 batch_size = int(config['train']['batch_size'])
-epochs = int(config['train']['epochs'])
+num_epochs = int(config['train']['num_epochs'])
 forecast_window = int(config['train']['forecast_window'])
+hidden_dim = int(config['train']['hidden_dim'])
 lr = float(config['train']['lr'])
 
 update = int(config['dataset']['update'])
@@ -54,7 +55,9 @@ if __name__ == '__main__':
     print(train_duration, val_duration, test_duration, train_duration+val_duration+test_duration)
     print(train_start_index, val_start_index, test_start_index)
 
+    train_data_shape, val_data_shape, test_data_shape = train_data.shape(), val_data.shape(), test_data.shape()
+
     print(len(train_data), len(val_data), len(test_data))
-    print(train_data.shape())
-    print(val_data.shape())
-    print(test_data.shape())
+    print(f'Train Data:\nFeature shape: {train_data_shape[0]} \t PM25_Hist shape: {train_data_shape[1]} \t PM25 shape: {train_data_shape[2]}')
+    print(f'Val Data:\nFeature shape: {val_data_shape[0]} \t PM25_Hist shape: {val_data_shape[1]} \t PM25 shape: {val_data_shape[2]}')
+    print(f'Test Data:\nFeature shape: {test_data_shape[0]} \t PM25_Hist shape: {test_data_shape[1]} \t PM25 shape: {test_data_shape[2]}')

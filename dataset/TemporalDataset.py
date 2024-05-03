@@ -38,7 +38,7 @@ class TemporalDataset(data.Dataset):
         self.feature, self.pm25_hist, self.pm25 = np.float32(self.feature), np.float32(self.pm25_hist), np.float32(self.pm25)
     
     def shape(self):
-        print(f'Feature shape: {self.feature.shape} \t PM25_Hist shape: {self.pm25_hist.shape} \t PM25 shape: {self.pm25.shape}')
+        return self.feature.shape, self.pm25_hist.shape, self.pm25.shape
 
     def __len__(self):
         assert len(self.pm25_hist) == len(self.feature) == len(self.pm25)
