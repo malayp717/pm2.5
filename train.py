@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.optim import lr_scheduler
 from dataset.TemporalDataset import TemporalDataset
-from dataset.SpatioDataset import SpatioTemporalDataset
+from dataset.SpatioTemporalDataset import SpatioTemporalDataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
 from graph import Graph
