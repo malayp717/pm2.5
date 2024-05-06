@@ -23,6 +23,7 @@ bihar_map_fp = data_dir + config['filepath']['bihar_map_fp']
 batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
 forecast_window = int(config['train']['forecast_window'])
+hist_window = int(config['train']['hist_window'])
 hidden_dim = int(config['train']['hidden_dim'])
 lr = float(config['train']['lr'])
 
@@ -40,24 +41,11 @@ test_end = config['split']['test_end']
 
 if __name__ == '__main__':
 
-    train_duration = ((datetime(*train_end) - datetime(*train_start)).days + 1) * (24//update)
-    val_duration = ((datetime(*val_end) - datetime(*val_start)).days + 1) * (24//update)
-    test_duration = ((datetime(*test_end) - datetime(*test_start)).days + 1) * (24//update)
-
-    train_start_index = (datetime(*train_start) - datetime(*data_start)).days * (24//update)
-    val_start_index = (datetime(*val_start) - datetime(*data_start)).days * (24//update)
-    test_start_index = (datetime(*test_start) - datetime(*data_start)).days * (24//update)
-
-    train_data = TemporalDataset(bihar_npy_fp, forecast_window, train_start_index, train_duration)
-    val_data = TemporalDataset(bihar_npy_fp, forecast_window, val_start_index, val_duration)
-    test_data = TemporalDataset(bihar_npy_fp, forecast_window, test_start_index, test_duration)
-
-    print(train_duration, val_duration, test_duration, train_duration+val_duration+test_duration)
-    print(train_start_index, val_start_index, test_start_index)
-
-    train_data_shape, val_data_shape, test_data_shape = train_data.shape(), val_data.shape(), test_data.shape()
+    train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+    val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
+    test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
     print(len(train_data), len(val_data), len(test_data))
-    print(f'Train Data:\nFeature shape: {train_data_shape[0]} \t PM25_Hist shape: {train_data_shape[1]} \t PM25 shape: {train_data_shape[2]}')
-    print(f'Val Data:\nFeature shape: {val_data_shape[0]} \t PM25_Hist shape: {val_data_shape[1]} \t PM25 shape: {val_data_shape[2]}')
-    print(f'Test Data:\nFeature shape: {test_data_shape[0]} \t PM25_Hist shape: {test_data_shape[1]} \t PM25 shape: {test_data_shape[2]}')
+    print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
+    print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
+    print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')

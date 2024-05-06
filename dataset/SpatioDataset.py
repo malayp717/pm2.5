@@ -2,8 +2,8 @@ import numpy as np
 from datetime import datetime
 from torch.utils import data
 
-class TemporalDataset(data.Dataset):
-    def __init__(self, data_fp, forecast_window, hist_window, start_date, end_date, data_start, update):
+class SpatioTemporalDataset(data.Dataset):
+    def __init__(self, data_fp, forecast_window, hist_window, start_date, end_date, data_start, update, edge_indices):
         '''
             Shape of the numpy array is [t, l, f]
                 t: total number of timestamps
@@ -11,6 +11,7 @@ class TemporalDataset(data.Dataset):
                 f: total number of features (including pm25) for each observation
         '''
         self.npy_data = np.load(data_fp)
+        self.edge_indices = edge_indices
         self.forecast_window = forecast_window
         self.hist_window = hist_window
         self.start_idx, self.end_idx = self._get_indices(start_date, end_date, data_start, update)

@@ -1,49 +1,49 @@
 ---
 filepath:
-  proj_dir:  C:/Users/malay/OneDrive/Desktop/thesis/pm2.5
+  proj_dir:  C:/Users/malay/OneDrive/Desktop/thesis/pm2.5/
   data_dir: C:/Users/malay/OneDrive/Desktop/thesis/data/
   model_dir: C:/Users/malay/OneDrive/Desktop/thesis/models/
   plots_dir: C:/Users/malay/OneDrive/Desktop/thesis/plots/
   bihar_pkl_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
   bihar_npy_fp: bihar_may_jan.npy
   china_npy_fp: KnowAir.npy
-  locations_fp: locations.txt
+  bihar_locations_fp: bihar_locations.txt
   china_locations_fp: china_locations.txt
   bihar_map_fp: bihar.json
 
 train:
   batch_size: 16
   num_epochs: 20
-  forecast_window: 6
-  window_size: 600
-  hidden_dim: 32
-  lr: 0.01
+  forecast_window: 24
+  hist_window: 1
+  hidden_dim: 64
+  lr: 0.005
 
 threshold:
   distance: 100
 
-# dataset:
-#   update: 1
-#   data_start: [2023, 5, 1]
-#   data_end: [2024, 1, 31]
-
-# split:
-#   train_start: [2023, 5, 1]
-#   train_end: [2023, 12, 31]
-#   val_start: [2024, 1, 1]
-#   val_end: [2024, 1, 15]
-#   test_start: [2024, 1, 16]
-#   test_end: [2024, 1, 31]
-
 dataset:
-  update: 3
-  data_start: [2015, 1, 1]
-  data_end: [2018, 12, 31]
+  update: 1
+  data_start: [2023, 5, 1]
+  data_end: [2024, 1, 31]
 
 split:
-  train_start: [2015, 1, 1]
-  train_end: [2016, 12, 31]
-  val_start: [2017, 1, 1]
-  val_end: [2018, 1, 1]
-  test_start: [2018, 1, 1]
-  test_end: [2018, 12, 31]
+  train_start: [2023, 5, 1]
+  train_end: [2023, 12, 31]
+  val_start: [2024, 1, 1]
+  val_end: [2024, 1, 15]
+  test_start: [2024, 1, 16]
+  test_end: [2024, 1, 31]
+
+# dataset:
+#   update: 3
+#   data_start: [2015, 1, 1]
+#   data_end: [2018, 12, 31]
+
+# split:
+#   train_start: [2015, 1, 1]
+#   train_end: [2016, 12, 31]
+#   val_start: [2017, 1, 1]
+#   val_end: [2018, 1, 1]
+#   test_start: [2018, 1, 1]
+#   test_end: [2018, 12, 31]
