@@ -12,8 +12,8 @@ filepath:
   bihar_map_fp: bihar.json
 
 train:
-  batch_size: 16
-  num_epochs: 20
+  batch_size: 32
+  num_epochs: 30
   forecast_window: 24
   hist_window: 1
   hidden_dim: 64

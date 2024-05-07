@@ -176,7 +176,7 @@ if __name__ == '__main__':
         train_loss = train(model, train_loader, optimizer)
         val_loss = val(model, val_loader)
 
-        if (epoch+1) % 2 == 0:
+        if (epoch+1) % 3 == 0:
             print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
                 Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
             start_time = time.time()
