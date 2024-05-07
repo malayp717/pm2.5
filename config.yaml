@@ -1,9 +1,9 @@
 ---
 filepath:
-  proj_dir:  C:/Users/malay/OneDrive/Desktop/thesis/pm2.5/
-  data_dir: C:/Users/malay/OneDrive/Desktop/thesis/data/
-  model_dir: C:/Users/malay/OneDrive/Desktop/thesis/models/
-  plots_dir: C:/Users/malay/OneDrive/Desktop/thesis/plots/
+  proj_dir:  /data2/malayp/pm2.5/
+  data_dir: /data2/malayp/data/
+  model_dir: /data2/malayp/models/
+  plots_dir: /data2/malayp/plots/
   bihar_pkl_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
   bihar_npy_fp: bihar_may_jan.npy
   china_npy_fp: KnowAir.npy
@@ -18,9 +18,10 @@ train:
   hist_window: 1
   hidden_dim: 64
   lr: 0.005
+  model: GC_GRU
 
 threshold:
-  distance: 100
+  distance: 75
 
 dataset:
   update: 1

@@ -38,6 +38,7 @@ forecast_window = int(config['train']['forecast_window'])
 hist_window = int(config['train']['hist_window'])
 hidden_dim = int(config['train']['hidden_dim'])
 lr = float(config['train']['lr'])
+model_type = config['train']['model']
 
 update = int(config['dataset']['update'])
 data_start = config['dataset']['data_start']
@@ -52,6 +53,27 @@ test_end = config['split']['test_end']
 
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
+
+def get_info():
+    if model_type == 'GRU':
+        train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+        val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
+        test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
+
+        in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
+        model = GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device)
+
+    elif model_type == 'GC_GRU':
+        graph = Graph(bihar_locations_fp)
+
+        train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
+        val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
+        test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
+
+        in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
+        model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.edge_indices)
+
+    return train_data, val_data, test_data, model
 
 def train(model, loader, optimizer):
     model.train()
@@ -97,7 +119,7 @@ def val(model, loader):
     val_loss /= (batch_idx+1)
     return val_loss
 
-def test(model, loader):
+def test(model, loader, pm25_mean, pm25_std):
     model.eval()
     test_loss = 0
 
@@ -116,6 +138,8 @@ def test(model, loader):
         loss = criterion(pm25_label, pm25_preds)
         test_loss += loss.item()
 
+        pm25_label = pm25_label * pm25_std + pm25_mean
+        pm25_preds = pm25_preds * pm25_std + pm25_mean
         pm25_label, pm25_preds = pm25_label.detach().cpu().numpy(), pm25_preds.detach().cpu().numpy()
 
         y.extend(pm25_label)
@@ -130,17 +154,10 @@ def test(model, loader):
     return test_loss
 
 if __name__ == '__main__':
-    # train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
-    # val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
-    # test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
-    graph = Graph(bihar_locations_fp)
+    train_data, val_data, test_data, model = get_info()
+    pm25_mean, pm25_std = train_data.pm25_mean, train_data.pm25_std
 
-    train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
-    val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
-    test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
-
-    print(len(train_data), len(val_data), len(test_data))
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
     print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
     print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
@@ -149,11 +166,6 @@ if __name__ == '__main__':
     val_loader = torch.utils.data.DataLoader(val_data, drop_last=True, batch_size=batch_size)
     test_loader = torch.utils.data.DataLoader(test_data, drop_last=True, batch_size=batch_size)
 
-    in_dim, out_dim = train_data.feature.shape[-1], train_data.pm25.shape[-1]
-    city_num = train_data.feature.shape[-2]
-
-    # model = GRU(in_dim, hidden_dim, out_dim, city_num, hist_window, forecast_window, batch_size, device)
-    model = GC_GRU(in_dim, hidden_dim, out_dim, city_num, hist_window, forecast_window, batch_size, device, graph.edge_indices)
     model.to(device)
     print(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
@@ -169,7 +181,7 @@ if __name__ == '__main__':
                 Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
             start_time = time.time()
     
-    train_loss = test(model, train_loader)
-    val_loss = test(model, val_loader)
-    test_loss = test(model, test_loader)
+    train_loss = test(model, train_loader, pm25_mean, pm25_std)
+    val_loss = test(model, val_loader, pm25_mean, pm25_std)
+    test_loss = test(model, test_loader, pm25_mean, pm25_std)
     print(f'Test Loss: {test_loss:.4f}')

@@ -2,10 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from models.cells import GRUCell
-from torch_geometric.nn import ChebConv
+from torch_geometric.nn import ChebConv, GCNConv, SAGEConv
 
 class GC_GRU(nn.Module):
-    def __init__(self, in_dim, hid_dim, out_dim, city_num, hist_window, forecast_window, batch_size, device, edge_indices):
+    def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device, edge_indices):
         super(GC_GRU, self).__init__()
         self.device = device
         self.edge_indices = torch.LongTensor(edge_indices)
@@ -20,10 +20,11 @@ class GC_GRU(nn.Module):
         self.city_num = city_num
         self.batch_size = batch_size
 
-        self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
-        # self.fc_in = nn.Linear(in_dim+self.out_dim, hid_dim)
-        self.gru_cell = GRUCell(in_dim+self.out_dim+self.gcn_out, hid_dim)
-        self.fc_out = nn.Linear(hid_dim, out_dim)
+        # self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
+        # self.conv = GCNConv(in_dim+self.out_dim, self.gcn_out, add_self_loops=True)
+        self.conv = SAGEConv(in_dim + self.out_dim, self.gcn_out)
+        self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
+        self.fc_out = nn.Linear(hid_dim, self.out_dim)
 
     def forward(self, feature, pm25_hist):
         '''

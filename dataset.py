@@ -4,6 +4,8 @@ import yaml
 import numpy as np
 from datetime import datetime
 from dataset.TemporalDataset import TemporalDataset
+from dataset.SpatioTemporalDataset import SpatioTemporalDataset
+from graph import Graph
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
@@ -17,7 +19,7 @@ data_dir = config['filepath']['data_dir']
 model_dir = config['filepath']['model_dir']
 bihar_pkl_fp = data_dir + config['filepath']['bihar_pkl_fp']
 bihar_npy_fp = data_dir + config['filepath']['bihar_npy_fp']
-locations_fp = data_dir + config['filepath']['locations_fp']
+bihar_locations_fp = data_dir + config['filepath']['bihar_locations_fp']
 bihar_map_fp = data_dir + config['filepath']['bihar_map_fp']
 
 batch_size = int(config['train']['batch_size'])
@@ -41,9 +43,15 @@ test_end = config['split']['test_end']
 
 if __name__ == '__main__':
 
-    train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
-    val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
-    test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
+    # train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+    # val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
+    # test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
+
+    graph = Graph(bihar_locations_fp)
+
+    train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
+    val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
+    test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
 
     print(len(train_data), len(val_data), len(test_data))
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')

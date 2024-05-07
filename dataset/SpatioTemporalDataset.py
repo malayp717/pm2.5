@@ -1,5 +1,5 @@
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from torch.utils import data
 
 class SpatioTemporalDataset(data.Dataset):
@@ -15,9 +15,11 @@ class SpatioTemporalDataset(data.Dataset):
         self.forecast_window = forecast_window
         self.hist_window = hist_window
         self.start_idx, self.end_idx = self._get_indices(start_date, end_date, data_start, update)
+        self.time_arr = self._get_time_arr(start_date, update)
         self._norm()
         self.pm25 = np.expand_dims(self.pm25, axis=-1)
         self._process_data()
+        self.feature = np.concatenate((self.feature, self.time_arr), axis=-1)
         self.feature = np.float32(self.feature)
         self.pm25 = np.float32(self.pm25)
 
@@ -35,6 +37,18 @@ class SpatioTemporalDataset(data.Dataset):
         data = (self.npy_data[self.start_idx:self.end_idx+1]-overall_mean) / overall_std
         self.feature, self.pm25 = data[:, :, :-1], data[:, :, -1]
 
+    def _get_time_arr(self, start_date, update):
+        start_date, incr = datetime(*start_date), timedelta(hours=update)
+
+        time_arr = []
+        for _ in range(self.end_idx - self.start_idx + 1):
+            is_weekend = 1 if start_date.weekday() in [5, 6] else 0
+            time_arr.append([start_date.hour, is_weekend])
+            start_date += incr
+
+        time_arr = np.array(time_arr)
+        return time_arr
+
     def _add_t(self, arr):
         # Total Time steps >= forecast_window + hist_window
         assert arr.shape[0] > self.forecast_window + self.hist_window
@@ -51,6 +65,12 @@ class SpatioTemporalDataset(data.Dataset):
     def _process_data(self):
         self.feature = self._add_t(self.feature)
         self.pm25 = self._add_t(self.pm25)
+        self.time_arr = self._add_t(self.time_arr)
+        '''
+            Input time_arr: (num_time_series, hist_len+pred_len, 2) : 2 for (weekend, hour of day)
+            Output time_arr: (num_time_series, hist_len+pred_len, num_locs, 2): repeat values for each location along axis=2
+        '''
+        self.time_arr = np.repeat(np.expand_dims(self.time_arr, axis=2), repeats=self.feature.shape[-2], axis=2)
 
     def __len__(self):
         assert len(self.feature) == len(self.pm25)

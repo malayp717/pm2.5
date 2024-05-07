@@ -4,20 +4,20 @@ import torch.nn as nn
 from models.cells import GRUCell
 
 class GRU(nn.Module):
-    def __init__(self, in_dim, hid_dim, out_dim, city_num, hist_window, forecast_window, batch_size, device):
+    def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device):
         super(GRU, self).__init__()
         self.device = device
         self.hist_window = hist_window
         self.forecast_window = forecast_window
         # self.in_dim = in_dim
         self.hid_dim = hid_dim
-        # self.out_dim = out_dim
+        self.out_dim = 1
         self.city_num = city_num
         self.batch_size = batch_size
 
         self.fc_in = nn.Linear(in_dim+1, hid_dim)
         self.gru_cell = GRUCell(hid_dim, hid_dim)
-        self.fc_out = nn.Linear(hid_dim, out_dim)
+        self.fc_out = nn.Linear(hid_dim, self.out_dim)
 
     def forward(self, feature, pm25_hist):
         '''
