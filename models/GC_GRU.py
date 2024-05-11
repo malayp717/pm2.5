@@ -5,10 +5,10 @@ from models.cells import GRUCell
 from torch_geometric.nn import ChebConv, GCNConv, SAGEConv
 
 class GC_GRU(nn.Module):
-    def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device, edge_indices):
+    def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device, adj_mat):
         super(GC_GRU, self).__init__()
         self.device = device
-        self.edge_indices = torch.LongTensor(edge_indices)
+        self.edge_indices = torch.LongTensor(self._process_adj_mat(adj_mat))
         self.edge_indices = self.edge_indices.view(2, 1, -1).repeat(1, batch_size, 1) + torch.arange(batch_size).view(1, -1, 1) * city_num
         self.edge_indices = self.edge_indices.view(2, -1)
         self.hist_window = hist_window
@@ -25,6 +25,16 @@ class GC_GRU(nn.Module):
         self.conv = SAGEConv(in_dim + self.out_dim, self.gcn_out)
         self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
         self.fc_out = nn.Linear(hid_dim, self.out_dim)
+
+    def _process_adj_mat(self, adj_mat):
+
+        r, c = np.where(adj_mat == True)
+        edges = [(x, y) for x, y in zip(r, c)]
+
+        source_nodes = torch.tensor(np.array([edge[0] for edge in edges]))
+        target_nodes = torch.tensor(np.array([edge[1] for edge in edges]))
+
+        return torch.stack((source_nodes, target_nodes))
 
     def forward(self, feature, pm25_hist):
         '''

@@ -42,8 +42,9 @@ class SpatioTemporalDataset(data.Dataset):
 
         time_arr = []
         for _ in range(self.end_idx - self.start_idx + 1):
-            is_weekend = 1 if start_date.weekday() in [5, 6] else 0
-            time_arr.append([start_date.hour, is_weekend])
+            is_weekend = 1 if start_date.weekday() >= 5 else 0
+            theta = (2.0 * np.pi * start_date.hour) / 24.0
+            time_arr.append([np.sin(theta), np.cos(theta), is_weekend])
             start_date += incr
 
         time_arr = np.array(time_arr)

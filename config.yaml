@@ -13,15 +13,16 @@ filepath:
 
 train:
   batch_size: 32
-  num_epochs: 30
+  num_epochs: 1
   forecast_window: 24
   hist_window: 1
   hidden_dim: 64
   lr: 0.005
-  model: GC_GRU
+  model: DGC_GRU
 
 threshold:
-  distance: 75
+  distance: 25
+  wind: 1
 
 dataset:
   update: 1
@@ -35,6 +36,8 @@ split:
   val_end: [2024, 1, 15]
   test_start: [2024, 1, 16]
   test_end: [2024, 1, 31]
+
+meteo_var: ['rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp']
 
 # dataset:
 #   update: 3

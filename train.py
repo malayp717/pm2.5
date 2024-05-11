@@ -1,5 +1,4 @@
 import numpy as np
-from datetime import datetime
 import time
 import yaml
 import os
@@ -11,6 +10,7 @@ from dataset.TemporalDataset import TemporalDataset
 from dataset.SpatioTemporalDataset import SpatioTemporalDataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
+from models.DGC_GRU import DGC_GRU
 from graph import Graph
 from utils import eval_stat
 
@@ -55,23 +55,28 @@ criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
 def get_info():
-    if model_type == 'GRU':
+    if model_type in {'GRU', 'LSTM'}:
         train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
         val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
         test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
-        in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
-        model = GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device)
-
-    elif model_type == 'GC_GRU':
+    elif model_type in {'GC_GRU', 'DGC_GRU'}:
         graph = Graph(bihar_locations_fp)
 
-        train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
-        val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
-        test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
+        train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.adj_mat)
+        val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.adj_mat)
+        test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.adj_mat)
 
-        in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
-        model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.edge_indices)
+    in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
+
+    if model_type == 'GRU':
+        model = GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device)
+    elif model_type == 'GC_GRU':
+        model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+    elif model_type == 'DGC_GRU':
+        model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
+    else:
+        raise Exception('Wrong model name!')
 
     return train_data, val_data, test_data, model
 
@@ -176,7 +181,7 @@ if __name__ == '__main__':
         train_loss = train(model, train_loader, optimizer)
         val_loss = val(model, val_loader)
 
-        if (epoch+1) % 3 == 0:
+        if (epoch+1) % (num_epochs // 10) == 0:
             print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
                 Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
             start_time = time.time()
