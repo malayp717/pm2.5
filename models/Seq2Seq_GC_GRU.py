@@ -2,27 +2,27 @@ import numpy as np
 import torch
 import torch.nn as nn
 from models.cells import GRUCell
-from torch_geometric.nn import ChebConv, GCNConv, SAGEConv
+from torch_geometric.nn import ChebConv, GCNConv, SAGEConv, GATConv
 
-class GC_GRU(nn.Module):
+class Seq2Seq_GC_GRU(nn.Module):
     def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device, adj_mat):
-        super(GC_GRU, self).__init__()
+        super(Seq2Seq_GC_GRU, self).__init__()
         self.device = device
         self.batch_size = batch_size
         self.city_num = city_num
         self.edge_indices = self._process_adj_mat(adj_mat)
         self.hist_window = hist_window
         self.forecast_window = forecast_window
-        # self.in_dim = in_dim
+
         self.hid_dim = hid_dim
         self.out_dim = 1
         self.gcn_out = 1                            # Should be equal to out_dim
 
-        # self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
-        # self.conv = GCNConv(in_dim+self.out_dim, self.gcn_out, add_self_loops=True)
-        self.conv = SAGEConv(in_dim + self.out_dim, self.gcn_out)
-        self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
-        self.fc_out = nn.Linear(hid_dim, self.out_dim)
+        self.gru_cell_hist = GRUCell(2, self.hid_dim)
+        self.fc_hist = nn.Linear(self.hid_dim, self.out_dim)
+        self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
+        self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, self.hid_dim)
+        self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
 
     def _process_adj_mat(self, adj_mat):
 
@@ -49,13 +49,28 @@ class GC_GRU(nn.Module):
         feature, pm25_hist = feature.to(self.device), pm25_hist.to(self.device)
         pm25_pred = []
 
+        '''
+            PM2.5 history embedding implementation
+        '''
         h0 = torch.zeros(self.batch_size * self.city_num, self.hid_dim).to(self.device)
         hn = h0
-        xn = pm25_hist[:, -1]
+        xn = torch.zeros(self.batch_size, self.city_num, self.out_dim).to(self.device)
+
+        for i in range(self.hist_window):
+            x = torch.cat((xn, pm25_hist[:, i]), dim=-1)
+            x = x.contiguous()
+
+            hn = self.gru_cell_hist(x, hn)
+            xn = hn.view(self.batch_size, self.city_num, self.hid_dim)
+            xn = self.fc_hist(xn)
+
+        '''
+            Current Forecast Window implementation
+        '''
+        hn = hn.view(self.batch_size * self.city_num, self.hid_dim)
 
         for i in range(self.forecast_window):
             x = torch.cat((xn, feature[:, self.hist_window+i]), dim=-1)
-            # x = self.fc_in(x)
             x_gcn = x.contiguous()
 
             x_gcn = x_gcn.view(self.batch_size * self.city_num, -1)

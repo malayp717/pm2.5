@@ -37,9 +37,7 @@ class DGC_GRU(nn.Module):
         self.city_num = city_num
         self.batch_size = batch_size
 
-        # self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
-        # self.conv = GCNConv(in_dim+self.out_dim, self.gcn_out, add_self_loops=True)
-        self.conv = SAGEConv(in_dim + self.out_dim, self.gcn_out)
+        self.conv = ChebConv(in_dim + self.out_dim, self.gcn_out, K=2)
         self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
         self.fc_out = nn.Linear(hid_dim, self.out_dim)
 
@@ -47,7 +45,6 @@ class DGC_GRU(nn.Module):
         
         m, n = self.adj_mat.size()
         wind_mat = torch.zeros((self.batch_size, m, n)).to(self.device)
-        # print(m, n, wind.size())
 
         for i in range(m):
             for j in range(n):
@@ -60,20 +57,16 @@ class DGC_GRU(nn.Module):
         edges = torch.logical_and(adj_mat, wind_mat)
 
         edge_indices = []
-        for _ in range(edges.size(0)):
-            r, c = torch.where(edges[i] == True)
-            
 
-        (r, c) = torch.where(edges == True)
-        edges = [(x, y) for x, y in zip(r, c)]
+        for i in range(edges.size(0)):
+            r, c = torch.where(edges[i, :, :] == True)
+            edges = [(x, y) for x, y in zip(r, c)]
 
-        source_nodes = torch.tensor([edge[0] for edge in edges])
-        target_nodes = torch.tensor([edge[1] for edge in edges])
+            source_nodes = torch.tensor([edge[0] for edge in edges])
+            target_nodes = torch.tensor([edge[1] for edge in edges])
+            edge_indices = torch.stack((source_nodes, target_nodes))
 
-        edge_indices = torch.stack((source_nodes, target_nodes))
-        print(edge_indices.shape)
-
-        return wind_mat
+        return edge_indices
 
     def forward(self, feature, pm25_hist):
         '''
@@ -95,14 +88,13 @@ class DGC_GRU(nn.Module):
             v10 = curr_feature[:, :, meteo_var.index('v10')]
             wind = torch.stack((u10, v10), axis=-1)
 
-            wind_mat = self.generate_edge_indices(wind)
+            edge_indices = self.generate_edge_indices(wind).to(self.device)
 
-            print(curr_feature.size(), u10.size(), v10.size(), wind.size(), self.adj_mat.size(), wind_mat.size())
-            # x = self.fc_in(x)
+            # print(curr_feature.size(), u10.size(), v10.size(), wind.size(), self.adj_mat.size(), edge_indices.size())
             x_gcn = x.contiguous()
 
             x_gcn = x_gcn.view(self.batch_size * self.city_num, -1)
-            x_gcn = torch.sigmoid(self.conv(x_gcn, self.edge_indices))
+            x_gcn = torch.sigmoid(self.conv(x_gcn, edge_indices))
             x_gcn = x_gcn.view(self.batch_size, self.city_num, -1)
 
             x = torch.cat((x, x_gcn), dim=-1)

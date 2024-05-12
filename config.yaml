@@ -12,17 +12,17 @@ filepath:
   bihar_map_fp: bihar.json
 
 train:
-  batch_size: 32
+  batch_size: 1
   num_epochs: 1
   forecast_window: 24
-  hist_window: 1
-  hidden_dim: 64
+  hist_window: 24
+  hidden_dim: 32
   lr: 0.005
   model: DGC_GRU
 
 threshold:
   distance: 25
-  wind: 1
+  wind: 1.5
 
 dataset:
   update: 1

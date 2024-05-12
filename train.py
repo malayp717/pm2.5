@@ -11,6 +11,7 @@ from dataset.SpatioTemporalDataset import SpatioTemporalDataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
 from models.DGC_GRU import DGC_GRU
+from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
 from graph import Graph
 from utils import eval_stat
 
@@ -60,7 +61,7 @@ def get_info():
         val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
         test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
-    elif model_type in {'GC_GRU', 'DGC_GRU'}:
+    elif model_type in {'GC_GRU', 'Seq2Seq_GC_GRU', 'DGC_GRU'}:
         graph = Graph(bihar_locations_fp)
 
         train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.adj_mat)
@@ -73,6 +74,8 @@ def get_info():
         model = GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device)
     elif model_type == 'GC_GRU':
         model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+    elif model_type == 'Seq2Seq_GC_GRU':
+        model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
     elif model_type == 'DGC_GRU':
         model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
     else:
@@ -181,10 +184,10 @@ if __name__ == '__main__':
         train_loss = train(model, train_loader, optimizer)
         val_loss = val(model, val_loader)
 
-        if (epoch+1) % (num_epochs // 10) == 0:
-            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-            start_time = time.time()
+        # if (epoch+1) % (num_epochs // 10) == 0:
+        print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+            Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
+        start_time = time.time()
     
     train_loss = test(model, train_loader, pm25_mean, pm25_std)
     val_loss = test(model, val_loader, pm25_mean, pm25_std)

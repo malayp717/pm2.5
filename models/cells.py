@@ -21,9 +21,7 @@ class GRUCell(nn.Module):
             w.data.uniform_(-std, std)
 
     def forward(self, x, hidden):
-        # print(f"Before: {x.size()}")
         x = x.view(-1, x.size(-1))
-        # print(f"After: {x.size()}")
 
         gate_x = self.x2h(x)
         gate_h = self.h2h(hidden)
