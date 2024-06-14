@@ -1,6 +1,6 @@
 ---
 filepath:
-  proj_dir:  /data2/malayp/pm2.5/
+  proj_dir: /data2/malayp/pm2.5/
   data_dir: /data2/malayp/data/
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
@@ -9,20 +9,22 @@ filepath:
   china_npy_fp: KnowAir.npy
   bihar_locations_fp: bihar_locations.txt
   china_locations_fp: china_locations.txt
+  china_altitude_fp: china_altitude.npy
   bihar_map_fp: bihar.json
 
 train:
-  batch_size: 1
-  num_epochs: 1
+  batch_size: 32
+  num_epochs: 30
   forecast_window: 24
-  hist_window: 24
+  hist_window: 12
   hidden_dim: 32
   lr: 0.005
-  model: DGC_GRU
+  model: Seq2Seq_GC_GRU
 
 threshold:
-  distance: 25
+  distance: 50
   wind: 1.5
+  haze: 75
 
 dataset:
   update: 1

@@ -2,6 +2,9 @@ import math
 import random
 import pickle
 import time
+import yaml
+import os
+import sys
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -9,8 +12,17 @@ from xgboost import XGBRegressor
 from constants import *
 from sklearn.ensemble import RandomTreesEmbedding, RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error
-from torch.utils.data import Dataset
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import torch
+
+proj_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(proj_dir)
+config_fp = os.path.join(proj_dir, 'config.yaml')
+
+with open(config_fp, 'r') as f:
+    config = yaml.safe_load(f)
+
+model_dir = config['filepath']['model_dir']
 
 random.seed(42)
 
@@ -176,14 +188,39 @@ def create_timeseries_data(df, station_indexing):
     Output:
         Root Mean Square Value, Spearman R_squared, Spearman p_value, Pearson R_squared, Pearson p_value
 '''
-def eval_stat(y_pred, y):
-    RMSE = math.sqrt(mean_squared_error(y_pred, y))
-    # std = np.std(y_pred)
-    R_squared = stats.spearmanr(y_pred, y)[0]
-    p_value = stats.spearmanr(y_pred, y)[1]
-    R_squared_pearson = stats.pearsonr(y_pred, y)[0]
-    p_value_pearson = stats.pearsonr(y_pred, y)[1]
-    return RMSE, R_squared, p_value, R_squared_pearson, p_value_pearson
+def eval_stat(y_pred, y, haze_thresh):
+
+    RMSE = round(math.sqrt(mean_squared_error(y_pred, y)), 4)
+    MAE = round(mean_absolute_error(y, y_pred), 4)
+    spearmanr = round(stats.spearmanr(y_pred, y)[0], 4)
+    p_value = round(stats.spearmanr(y_pred, y)[1], 4)
+    pearsonr = round(stats.pearsonr(y_pred, y)[0], 4)
+
+    pred_haze = y_pred >= haze_thresh
+    pred_clear = y_pred < haze_thresh
+    label_haze = y >= haze_thresh
+    label_clear = y < haze_thresh
+
+    hit = np.sum(np.logical_and(pred_haze, label_haze))
+    miss = np.sum(np.logical_and(label_haze, pred_clear))
+    false_alarm = np.sum(np.logical_and(pred_haze, label_clear))
+
+    csi = hit / (hit + false_alarm + miss)
+    pod = hit / (hit + miss)
+    far = false_alarm / (hit + false_alarm)
+
+    csi, pod, far = round(csi, 4), round(pod, 4), round(far, 4)
+
+    return {
+        'RMSE': RMSE,
+        'MAE': MAE,
+        'Spearman R': spearmanr,
+        'p value': p_value,
+        'Pearson R': pearsonr,
+        'CSI': csi,
+        'POD': pod,
+        'FAR': far
+    }
 
 ''' Change input data to a sparse embedding 
     Input:
@@ -273,3 +310,17 @@ def data_processing(df, train_locs, val_locs, test_locs, WS, FW):
     print(f'Time taken: {(time.time()-start_time)/60:.2f} mins')
 
     return train_data, val_data, test_data
+
+def save_model(model, optimizer, train_loss, val_loss, filename):
+    state = {
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'train_loss': train_loss,
+        'val_loss': val_loss
+    }
+
+    torch.save(state, model_dir+filename)
+
+def load_model(fp):
+    state = torch.load(fp)
+    return state['model_state_dict'], state['optimizer_state_dict'], state['train_loss'], state['val_loss']

@@ -12,8 +12,9 @@ from models.GRU import GRU
 from models.GC_GRU import GC_GRU
 from models.DGC_GRU import DGC_GRU
 from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
+from models.Seq2Seq_Attn_GC_GRU import Seq2Seq_Attn_GC_GRU
 from graph import Graph
-from utils import eval_stat
+from utils import eval_stat, save_model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 proj_dir = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +46,8 @@ update = int(config['dataset']['update'])
 data_start = config['dataset']['data_start']
 data_end = config['dataset']['data_end']
 
+haze_thresh = float(config['threshold']['haze'])
+
 train_start = config['split']['train_start']
 train_end = config['split']['train_end']
 val_start = config['split']['val_start']
@@ -61,7 +64,7 @@ def get_info():
         val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
         test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
-    elif model_type in {'GC_GRU', 'Seq2Seq_GC_GRU', 'DGC_GRU'}:
+    elif model_type in {'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU'}:
         graph = Graph(bihar_locations_fp)
 
         train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.adj_mat)
@@ -76,6 +79,8 @@ def get_info():
         model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_GC_GRU':
         model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+    elif model_type == 'Seq2Seq_Attn_GC_GRU':
+        model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
     elif model_type == 'DGC_GRU':
         model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
     else:
@@ -158,7 +163,7 @@ def test(model, loader, pm25_mean, pm25_std):
     y, y_pred = np.array(y), np.array(y_pred)
     y, y_pred = y.ravel(), y_pred.ravel()
 
-    print(eval_stat(y_pred, y))
+    print(eval_stat(y_pred, y, haze_thresh))
     return test_loss
 
 if __name__ == '__main__':
@@ -170,24 +175,32 @@ if __name__ == '__main__':
     print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
     print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
     
-    train_loader = torch.utils.data.DataLoader(train_data, drop_last=True, batch_size=batch_size)
-    val_loader = torch.utils.data.DataLoader(val_data, drop_last=True, batch_size=batch_size)
-    test_loader = torch.utils.data.DataLoader(test_data, drop_last=True, batch_size=batch_size)
+    train_loader = torch.utils.data.DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
 
     model.to(device)
     print(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     start_time = time.time()
+    train_losses, val_losses = [], []
+    model_name = model_type + "_" + str(hist_window) + "_" + str(forecast_window) + ".pth.tar"
+
     for epoch in range(num_epochs):
 
         train_loss = train(model, train_loader, optimizer)
         val_loss = val(model, val_loader)
 
-        # if (epoch+1) % (num_epochs // 10) == 0:
-        print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-            Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-        start_time = time.time()
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+
+        if (epoch+1) % (num_epochs // 10) == 0:
+            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
+            start_time = time.time()
+
+            # save_model(model, optimizer, train_losses, val_losses, model_name)
     
     train_loss = test(model, train_loader, pm25_mean, pm25_std)
     val_loss = test(model, val_loader, pm25_mean, pm25_std)

@@ -19,6 +19,9 @@ with open(config_fp, 'r') as f:
 # ------------- Config parameters start ------------- #
 meteo_var = config['meteo_var']
 wind_thresh = float(config['threshold']['wind'])
+
+u10_idx = meteo_var.index('u10')
+v10_idx = meteo_var.index('v10')
 # ------------- Config parameters end   ------------- #
 
 
@@ -37,36 +40,51 @@ class DGC_GRU(nn.Module):
         self.city_num = city_num
         self.batch_size = batch_size
 
+        self.gru_cell_hist = GRUCell(2, self.hid_dim)
+        self.fc_hist = nn.Linear(self.hid_dim, self.out_dim)
+
         self.conv = ChebConv(in_dim + self.out_dim, self.gcn_out, K=2)
         self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
         self.fc_out = nn.Linear(hid_dim, self.out_dim)
 
     def generate_edge_indices(self, wind):
         
-        m, n = self.adj_mat.size()
-        wind_mat = torch.zeros((self.batch_size, m, n)).to(self.device)
+        '''
+            adj_mat shape: [num_nodes, num_nodes]
+            self.angles shape: [num_nodes, num_nodes]
+        '''
+        num_nodes = self.adj_mat.size(0)
+        wind_mat = torch.zeros((self.batch_size, num_nodes, num_nodes)).to(self.device)
+        # print(wind.size(), self.adj_mat.size())
 
-        for i in range(m):
-            for j in range(n):
-                theta_1, theta_2 = self.angles[i, j] - torch.tensor(np.pi/2, dtype=torch.float32), self.angles[i, j]
-                wind_mat[:, i, j] = wind[:, i, 1] * torch.cos(theta_1) + wind[:, i, 0] * torch.cos(theta_2)
+        # for i in range(m):
+        #     for j in range(n):
+        #         theta_1, theta_2 = self.angles[i, j] - torch.tensor(np.pi/2, dtype=torch.float32), self.angles[i, j]
+        #         wind_mat[:, i, j] = wind[:, i, 1] * torch.cos(theta_1) + wind[:, i, 0] * torch.cos(theta_2)
 
+        half_pi = torch.tensor(np.pi/2, dtype=torch.float32)
+        comp_1, comp_2 = torch.cos(self.angles).repeat(self.batch_size, 1, 1), torch.cos(self.angles - half_pi).repeat(self.batch_size, 1, 1)
+        comp_1, comp_2 = comp_1.to(self.device), comp_2.to(self.device)
+
+        wind_u, wind_v = wind[:, :, 0].unsqueeze(-1), wind[:, :, 1].unsqueeze(-1)
+        wind_u, wind_v = wind_u.repeat(1, 1, num_nodes), wind_v.repeat(1, 1, num_nodes)
+
+        wind_mat = wind_u * comp_1 + wind_v * comp_2
         wind_mat = torch.where(wind_mat >= wind_thresh, 1, 0)
+
         adj_mat = self.adj_mat.unsqueeze(0).repeat(self.batch_size, 1, 1)
         
         edges = torch.logical_and(adj_mat, wind_mat)
-
-        edge_indices = []
+        edge_indices = torch.LongTensor().to(self.device)
 
         for i in range(edges.size(0)):
-            r, c = torch.where(edges[i, :, :] == True)
-            edges = [(x, y) for x, y in zip(r, c)]
+            indices = torch.where(edges[i, :, :] == True)
 
-            source_nodes = torch.tensor([edge[0] for edge in edges])
-            target_nodes = torch.tensor([edge[1] for edge in edges])
-            edge_indices = torch.stack((source_nodes, target_nodes))
-
-        return edge_indices
+            e = torch.stack((indices[0], indices[1])) + i * self.city_num
+            edge_indices = torch.cat((edge_indices, e), dim=1)
+            
+        # print(edge_indices.size())
+        return edge_indices.cpu()
 
     def forward(self, feature, pm25_hist):
         '''
@@ -77,18 +95,35 @@ class DGC_GRU(nn.Module):
         feature, pm25_hist = feature.to(self.device), pm25_hist.to(self.device)
         pm25_pred = []
 
+        '''
+            PM2.5 history embedding implementation
+        '''
         h0 = torch.zeros(self.batch_size * self.city_num, self.hid_dim).to(self.device)
         hn = h0
-        xn = pm25_hist[:, -1]
+        xn = torch.zeros(self.batch_size, self.city_num, self.out_dim).to(self.device)
+
+        for i in range(self.hist_window):
+            x = torch.cat((xn, pm25_hist[:, i]), dim=-1)
+            x = x.contiguous()
+
+            hn = self.gru_cell_hist(x, hn)
+            xn = hn.view(self.batch_size, self.city_num, self.hid_dim)
+            xn = self.fc_hist(xn)
+
+        '''
+            Current Forecast Window implementation
+        '''
+        hn = hn.view(self.batch_size * self.city_num, self.hid_dim)
 
         for i in range(self.forecast_window):
             curr_feature = feature[:, self.hist_window+i]
             x = torch.cat((xn, curr_feature), dim=-1)
-            u10 = curr_feature[:, :, meteo_var.index('u10')]
-            v10 = curr_feature[:, :, meteo_var.index('v10')]
-            wind = torch.stack((u10, v10), axis=-1)
 
-            edge_indices = self.generate_edge_indices(wind).to(self.device)
+            u10 = curr_feature[:, :, u10_idx]
+            v10 = curr_feature[:, :, v10_idx]
+            wind = torch.stack((u10, v10), axis=-1).to(self.device)
+
+            edge_indices = torch.LongTensor(self.generate_edge_indices(wind)).to(self.device)
 
             # print(curr_feature.size(), u10.size(), v10.size(), wind.size(), self.adj_mat.size(), edge_indices.size())
             x_gcn = x.contiguous()

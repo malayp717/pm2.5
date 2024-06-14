@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from models.cells import GRUCell
-from torch_geometric.nn import ChebConv, GCNConv, SAGEConv, GATConv
+from torch_geometric.nn import ChebConv
 
 class Seq2Seq_GC_GRU(nn.Module):
     def __init__(self, in_dim, hid_dim, city_num, hist_window, forecast_window, batch_size, device, adj_mat):

@@ -18,9 +18,7 @@ class GC_GRU(nn.Module):
         self.out_dim = 1
         self.gcn_out = 1                            # Should be equal to out_dim
 
-        # self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
-        # self.conv = GCNConv(in_dim+self.out_dim, self.gcn_out, add_self_loops=True)
-        self.conv = SAGEConv(in_dim + self.out_dim, self.gcn_out)
+        self.conv = ChebConv(in_dim+self.out_dim, self.gcn_out, K=2)
         self.gru_cell = GRUCell(in_dim + self.out_dim + self.gcn_out, hid_dim)
         self.fc_out = nn.Linear(hid_dim, self.out_dim)
 
