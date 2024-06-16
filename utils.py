@@ -1,10 +1,23 @@
 import math
-import random
 import numpy as np
 import pandas as pd
 from scipy import stats
+from math import radians, sin, cos, sqrt, asin
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import torch
+
+def haversine_dist(loc1, loc2):
+    R = 6371
+
+    lon1, lat1, lon2, lat2 = loc1[0], loc1[1], loc2[0], loc2[1]
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    dLon = lon2 - lon1
+    dLat = lat2 - lat1
+    a = sin(dLat/2) ** 2 + cos(lat1) * cos(lat2) * sin(dLon/2) ** 2
+    c = 2 * asin(sqrt(a))
+
+    return R * c
 
 def eval_stat(y_pred, y, haze_thresh):
 

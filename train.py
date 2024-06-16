@@ -10,16 +10,13 @@ from torch.utils.data import DataLoader
 from Dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
-from models.DGC_GRU import DGC_GRU
+# from models.DGC_GRU import DGC_GRU
 from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
 from models.Seq2Seq_Attn_GC_GRU import Seq2Seq_Attn_GC_GRU
-from bihar_graph import Graph as bGraph
-from china_graph import Graph as cGraph
+from graph import Graph
 from utils import eval_stat, save_model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-location = 'china'
-assert location in {'bihar', 'china'}, "Incorrect Location"
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
@@ -32,9 +29,12 @@ with open(config_fp, 'r') as f:
 data_dir = config['dirpath']['data_dir']
 model_dir = config['dirpath']['model_dir']
 
+location = config['location']
+
 npy_fp = data_dir + config[location]['filepath']['npy_fp']
 locations_fp = data_dir + config[location]['filepath']['locations_fp']
-# map_fp = data_dir + config['filepath']['map_fp']
+altitude_fp = data_dir + config[location]['filepath']['altitude_fp'] if location == 'china' else None
+# map_fp = data_dir + config[location]['filepath']['map_fp'] if location == 'bihar' else None
 
 batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
@@ -48,6 +48,8 @@ update = int(config[location]['dataset']['update'])
 data_start = config[location]['dataset']['data_start']
 data_end = config[location]['dataset']['data_end']
 
+dist_thresh = float(config[location]['threshold']['distance'])
+alt_thresh = float(config[location]['threshold']['altitude']) if location == 'china' else None
 haze_thresh = float(config[location]['threshold']['haze'])
 
 train_start = config[location]['split']['train_start']
@@ -69,7 +71,8 @@ def get_data_model_info(model_type, location):
     val_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
     test_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
 
-    graph = bGraph() if location == 'bihar' else cGraph()
+    graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
+
     in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
 
     if model_type == 'GRU':
@@ -80,8 +83,8 @@ def get_data_model_info(model_type, location):
         model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_Attn_GC_GRU':
         model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
-    elif model_type == 'DGC_GRU':
-        model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
+    # elif model_type == 'DGC_GRU':
+    #     model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
     else:
         raise Exception('Wrong model name!')
 

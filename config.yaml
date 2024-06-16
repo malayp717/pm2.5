@@ -5,6 +5,8 @@ dirpath:
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
 
+location: china
+
 bihar:
   filepath:
     npy_fp: bihar_may_jan.npy
@@ -38,7 +40,7 @@ china:
     altitude_fp: china_altitude.npy
 
   threshold:
-    distance: 100
+    distance: 500
     altitude: 1200
     wind: 1.5
     haze: 75
@@ -75,10 +77,10 @@ china:
     test_end: [2018, 12, 31]
   
 train:
-  batch_size: 32
-  num_epochs: 30
+  batch_size: 64
+  num_epochs: 50
   forecast_window: 24
-  hist_window: 12
-  hidden_dim: 32
-  lr: 0.005
+  hist_window: 24
+  hidden_dim: 64
+  lr: 0.0005
   model: Seq2Seq_GC_GRU
