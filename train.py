@@ -5,18 +5,22 @@ import os
 import sys
 import torch
 import torch.nn as nn
-from torch.optim import lr_scheduler
-from dataset.TemporalDataset import TemporalDataset
-from dataset.SpatioTemporalDataset import SpatioTemporalDataset
+from torch.utils.data import DataLoader
+# from torch.optim import lr_scheduler
+from Dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
 from models.DGC_GRU import DGC_GRU
 from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
 from models.Seq2Seq_Attn_GC_GRU import Seq2Seq_Attn_GC_GRU
-from graph import Graph
+from bihar_graph import Graph as bGraph
+from china_graph import Graph as cGraph
 from utils import eval_stat, save_model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+location = 'china'
+assert location in {'bihar', 'china'}, "Incorrect Location"
+
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
 config_fp = os.path.join(proj_dir, 'config.yaml')
@@ -25,14 +29,12 @@ with open(config_fp, 'r') as f:
     config = yaml.safe_load(f)
 
 # ------------- Config parameters start ------------- #
-data_dir = config['filepath']['data_dir']
-model_dir = config['filepath']['model_dir']
-bihar_pkl_fp = data_dir + config['filepath']['bihar_pkl_fp']
-bihar_npy_fp = data_dir + config['filepath']['bihar_npy_fp']
-bihar_locations_fp = data_dir + config['filepath']['bihar_locations_fp']
-china_npy_fp = data_dir + config['filepath']['china_npy_fp']
-china_locations_fp = data_dir + config['filepath']['china_locations_fp']
-bihar_map_fp = data_dir + config['filepath']['bihar_map_fp']
+data_dir = config['dirpath']['data_dir']
+model_dir = config['dirpath']['model_dir']
+
+npy_fp = data_dir + config[location]['filepath']['npy_fp']
+locations_fp = data_dir + config[location]['filepath']['locations_fp']
+# map_fp = data_dir + config['filepath']['map_fp']
 
 batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
@@ -42,35 +44,32 @@ hidden_dim = int(config['train']['hidden_dim'])
 lr = float(config['train']['lr'])
 model_type = config['train']['model']
 
-update = int(config['dataset']['update'])
-data_start = config['dataset']['data_start']
-data_end = config['dataset']['data_end']
+update = int(config[location]['dataset']['update'])
+data_start = config[location]['dataset']['data_start']
+data_end = config[location]['dataset']['data_end']
 
-haze_thresh = float(config['threshold']['haze'])
+haze_thresh = float(config[location]['threshold']['haze'])
 
-train_start = config['split']['train_start']
-train_end = config['split']['train_end']
-val_start = config['split']['val_start']
-val_end = config['split']['val_end']
-test_start = config['split']['test_start']
-test_end = config['split']['test_end']
+train_start = config[location]['split']['train_start']
+train_end = config[location]['split']['train_end']
+val_start = config[location]['split']['val_start']
+val_end = config[location]['split']['val_end']
+test_start = config[location]['split']['test_start']
+test_end = config[location]['split']['test_end']
 
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
-def get_info():
-    if model_type in {'GRU', 'LSTM'}:
-        train_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
-        val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
-        test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
+def get_data_model_info(model_type, location):
 
-    elif model_type in {'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU'}:
-        graph = Graph(bihar_locations_fp)
+    assert location in {'china', 'bihar'}, "Incorrect Location"
+    assert model_type in {'GRU', 'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU'}, "Incorrect model type"
 
-        train_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.adj_mat)
-        val_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.adj_mat)
-        test_data = SpatioTemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.adj_mat)
+    train_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+    val_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+    test_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
 
+    graph = bGraph() if location == 'bihar' else cGraph()
     in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
 
     if model_type == 'GRU':
@@ -168,16 +167,16 @@ def test(model, loader, pm25_mean, pm25_std):
 
 if __name__ == '__main__':
 
-    train_data, val_data, test_data, model = get_info()
+    train_data, val_data, test_data, model = get_data_model_info(model_type, location)
     pm25_mean, pm25_std = train_data.pm25_mean, train_data.pm25_std
 
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
     print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
     print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
     
-    train_loader = torch.utils.data.DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
-    val_loader = torch.utils.data.DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
-    test_loader = torch.utils.data.DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
 
     model.to(device)
     print(model)

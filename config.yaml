@@ -1,17 +1,79 @@
 ---
-filepath:
+dirpath:
   proj_dir: /data2/malayp/pm2.5/
   data_dir: /data2/malayp/data/
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
-  bihar_pkl_fp: bihar_meteo_era5_may_jan_iterative_imputed.pkl
-  bihar_npy_fp: bihar_may_jan.npy
-  china_npy_fp: KnowAir.npy
-  bihar_locations_fp: bihar_locations.txt
-  china_locations_fp: china_locations.txt
-  china_altitude_fp: china_altitude.npy
-  bihar_map_fp: bihar.json
 
+bihar:
+  filepath:
+    npy_fp: bihar_may_jan.npy
+    locations_fp: bihar_locations.txt
+    map_fp: bihar.json
+
+  threshold:
+    distance: 50
+    wind: 1.5
+    haze: 75
+
+  dataset:
+    update: 1
+    data_start: [2023, 5, 1]
+    data_end: [2024, 1, 31]
+
+  split:
+    train_start: [2023, 5, 1]
+    train_end: [2023, 12, 31]
+    val_start: [2024, 1, 1]
+    val_end: [2024, 1, 15]
+    test_start: [2024, 1, 16]
+    test_end: [2024, 1, 31]
+
+  meteo_var: ['rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp']
+
+china:
+  filepath:
+    npy_fp: KnowAir.npy
+    locations_fp: china_locations.txt
+    altitude_fp: china_altitude.npy
+
+  threshold:
+    distance: 100
+    altitude: 1200
+    wind: 1.5
+    haze: 75
+
+  meteo_var: ['100m_u_component_of_wind',
+      '100m_v_component_of_wind',
+      '2m_dewpoint_temperature',
+      '2m_temperature',
+      'boundary_layer_height',
+      'k_index',
+      'relative_humidity+950',
+      'relative_humidity+975',
+      'specific_humidity+950',
+      'surface_pressure',
+      'temperature+925',
+      'temperature+950',
+      'total_precipitation',
+      'u_component_of_wind+950',
+      'v_component_of_wind+950',
+      'vertical_velocity+950',
+      'vorticity+950']
+
+  dataset:
+    update: 3
+    data_start: [2015, 1, 1]
+    data_end: [2018, 12, 31]
+
+  split:
+    train_start: [2015, 1, 1]
+    train_end: [2016, 12, 31]
+    val_start: [2017, 1, 1]
+    val_end: [2018, 1, 1]
+    test_start: [2018, 1, 1]
+    test_end: [2018, 12, 31]
+  
 train:
   batch_size: 32
   num_epochs: 30
@@ -20,36 +82,3 @@ train:
   hidden_dim: 32
   lr: 0.005
   model: Seq2Seq_GC_GRU
-
-threshold:
-  distance: 50
-  wind: 1.5
-  haze: 75
-
-dataset:
-  update: 1
-  data_start: [2023, 5, 1]
-  data_end: [2024, 1, 31]
-
-split:
-  train_start: [2023, 5, 1]
-  train_end: [2023, 12, 31]
-  val_start: [2024, 1, 1]
-  val_end: [2024, 1, 15]
-  test_start: [2024, 1, 16]
-  test_end: [2024, 1, 31]
-
-meteo_var: ['rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp']
-
-# dataset:
-#   update: 3
-#   data_start: [2015, 1, 1]
-#   data_end: [2018, 12, 31]
-
-# split:
-#   train_start: [2015, 1, 1]
-#   train_end: [2016, 12, 31]
-#   val_start: [2017, 1, 1]
-#   val_end: [2018, 1, 1]
-#   test_start: [2018, 1, 1]
-#   test_end: [2018, 12, 31]

@@ -5,11 +5,14 @@ import numpy as np
 from datetime import datetime
 from dataset.TemporalDataset import TemporalDataset
 from dataset.SpatioTemporalDataset import SpatioTemporalDataset
-from graph import Graph
+from bihar_graph import Graph as bGraph
+from china_graph import Graph as cGraph
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
-config_fp = os.path.join(proj_dir, 'config.yaml')
+
+LOCATION = 'china'
+config_fp = os.path.join(proj_dir, 'bihar_config.yaml') if LOCATION == 'bihar' else os.path.join(proj_dir, 'china_config.yaml')
 
 with open(config_fp, 'r') as f:
     config = yaml.safe_load(f)
@@ -17,12 +20,10 @@ with open(config_fp, 'r') as f:
 # ------------- Config parameters start ------------- #
 data_dir = config['filepath']['data_dir']
 model_dir = config['filepath']['model_dir']
-bihar_pkl_fp = data_dir + config['filepath']['bihar_pkl_fp']
-bihar_npy_fp = data_dir + config['filepath']['bihar_npy_fp']
-bihar_locations_fp = data_dir + config['filepath']['bihar_locations_fp']
-bihar_map_fp = data_dir + config['filepath']['bihar_map_fp']
-china_npy_fp = data_dir + config['filepath']['china_npy_fp']
-china_locations_fp = data_dir + config['filepath']['china_locations_fp']
+npy_fp = data_dir + config['filepath']['npy_fp']
+locations_fp = data_dir + config['filepath']['locations_fp']
+map_fp = data_dir + config['filepath']['map_fp'] if LOCATION == 'bihar' else None
+altitude_fp = data_dir + config['filepath']['altitude_fp'] if LOCATION == 'china' else None
 
 batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
@@ -49,11 +50,11 @@ if __name__ == '__main__':
     # val_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update)
     # test_data = TemporalDataset(bihar_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update)
 
-    graph = Graph(china_locations_fp)
+    graph = bGraph(locations_fp) if LOCATION == 'bihar' else cGraph()
 
-    train_data = SpatioTemporalDataset(china_npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
-    val_data = SpatioTemporalDataset(china_npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
-    test_data = SpatioTemporalDataset(china_npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
+    train_data = SpatioTemporalDataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update, graph.edge_indices)
+    val_data = SpatioTemporalDataset(npy_fp, forecast_window, hist_window, val_start, val_end, data_start, update, graph.edge_indices)
+    test_data = SpatioTemporalDataset(npy_fp, forecast_window, hist_window, test_start, test_end, data_start, update, graph.edge_indices)
 
     print(len(train_data), len(val_data), len(test_data))
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')

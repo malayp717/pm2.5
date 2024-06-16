@@ -5,8 +5,6 @@ import os
 import sys
 from geopy.distance import geodesic
 from scipy.spatial import distance
-import torch
-
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
@@ -16,19 +14,18 @@ with open(config_fp, 'r') as f:
     config = yaml.safe_load(f)
 
 # ------------- Config parameters start ------------- #
-data_dir = config['filepath']['data_dir']
-loc_fp = data_dir + config['filepath']['bihar_locations_fp']
+data_dir = config['dirpath']['data_dir']
+loc_fp = data_dir + config['bihar']['filepath']['locations_fp']
 
-DIST_THRESH = int(config['threshold']['distance'])
+DIST_THRESH = int(config['bihar']['threshold']['distance'])
 # ------------- Config parameters end   ------------- #
 
 class Graph():
-    def __init__(self, loc_fp):
+    def __init__(self):
         self.locs = self._process_locs(loc_fp)
         self.num_locs = len(self.locs)
         self._generate_edges()
-        self.angles = self._generate_angles()
-        self.angles = np.float32(self.angles)
+        self.angles = np.float32(self._generate_angles())
 
     def _process_locs(self, loc_fp):
         locs = []
@@ -88,6 +85,5 @@ class Graph():
         self.adj_mat = np.logical_and(cond, self.adj_mat)
 
 if __name__ == '__main__':
-    graph = Graph(loc_fp)
+    graph = Graph()
     print(graph.num_locs)
-    print(graph.edge_indices)
