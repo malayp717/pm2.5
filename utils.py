@@ -21,36 +21,34 @@ def haversine_dist(loc1, loc2):
 
 def eval_stat(y_pred, y, haze_thresh):
 
-    RMSE = round(math.sqrt(mean_squared_error(y_pred, y)), 4)
-    MAE = round(mean_absolute_error(y, y_pred), 4)
-    spearmanr = round(stats.spearmanr(y_pred, y)[0], 4)
-    p_value = round(stats.spearmanr(y_pred, y)[1], 4)
-    pearsonr = round(stats.pearsonr(y_pred, y)[0], 4)
+    spearmanr = stats.spearmanr(y_pred.ravel(), y.ravel())[0]
 
-    pred_haze = y_pred >= haze_thresh
-    pred_clear = y_pred < haze_thresh
+    predict_haze = y_pred >= haze_thresh
+    predict_clear = y_pred < haze_thresh
     label_haze = y >= haze_thresh
     label_clear = y < haze_thresh
 
-    hit = np.sum(np.logical_and(pred_haze, label_haze))
-    miss = np.sum(np.logical_and(label_haze, pred_clear))
-    false_alarm = np.sum(np.logical_and(pred_haze, label_clear))
+    hit = np.sum(np.logical_and(predict_haze, label_haze))
+    miss = np.sum(np.logical_and(label_haze, predict_clear))
+    falsealarm = np.sum(np.logical_and(predict_haze, label_clear))
 
-    csi = hit / (hit + false_alarm + miss)
+    csi = hit / (hit + falsealarm + miss)
     pod = hit / (hit + miss)
-    far = false_alarm / (hit + false_alarm)
+    far = falsealarm / (hit + falsealarm)
 
-    csi, pod, far = round(csi, 4), round(pod, 4), round(far, 4)
-
+    predict = y_pred[:,:,:,0].transpose((0,2,1))
+    label = y[:,:,:,0].transpose((0,2,1))
+    predict = predict.reshape((-1, predict.shape[-1]))
+    label = label.reshape((-1, label.shape[-1]))
+    mae = np.mean(np.mean(np.abs(predict - label), axis=1))
+    rmse = np.mean(np.sqrt(np.mean(np.square(predict - label), axis=1)))
     return {
-        'RMSE': RMSE,
-        'MAE': MAE,
-        'Spearman R': spearmanr,
-        'p value': p_value,
-        'Pearson R': pearsonr,
-        'CSI': csi,
-        'POD': pod,
-        'FAR': far
+        'RMSE': round(rmse, 4), 
+        'MAE': round(mae, 4),
+        'SpearmanR': round(spearmanr, 4),
+        'CSI': round(csi, 4), 
+        'POD': round(pod, 4), 
+        'FAR': round(far, 4)
     }
 
 def save_model(model, optimizer, train_loss, val_loss, fp):

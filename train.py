@@ -7,12 +7,14 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 # from torch.optim import lr_scheduler
-from Dataset import Dataset
+from dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
 # from models.DGC_GRU import DGC_GRU
 from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
 from models.Seq2Seq_Attn_GC_GRU import Seq2Seq_Attn_GC_GRU
+from models.Seq2Seq_GNN_GRU import Seq2Seq_GNN_GRU
+from models.Seq2Seq_GNN_Transformer import Seq2Seq_GNN_Transformer
 from graph import Graph
 from utils import eval_stat, save_model
 
@@ -38,12 +40,13 @@ altitude_fp = data_dir + config[location]['filepath']['altitude_fp'] if location
 
 batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
-forecast_window = int(config['train']['forecast_window'])
-hist_window = int(config['train']['hist_window'])
+forecast_len = int(config['train']['forecast_len'])
+hist_len = int(config['train']['hist_len'])
 hidden_dim = int(config['train']['hidden_dim'])
 lr = float(config['train']['lr'])
 model_type = config['train']['model']
 
+dataset_num = int(config[location]['dataset']['num'])
 update = int(config[location]['dataset']['update'])
 data_start = config[location]['dataset']['data_start']
 data_end = config[location]['dataset']['data_end']
@@ -52,12 +55,12 @@ dist_thresh = float(config[location]['threshold']['distance'])
 alt_thresh = float(config[location]['threshold']['altitude']) if location == 'china' else None
 haze_thresh = float(config[location]['threshold']['haze'])
 
-train_start = config[location]['split']['train_start']
-train_end = config[location]['split']['train_end']
-val_start = config[location]['split']['val_start']
-val_end = config[location]['split']['val_end']
-test_start = config[location]['split']['test_start']
-test_end = config[location]['split']['test_end']
+train_start = config[location]['split'][dataset_num]['train_start']
+train_end = config[location]['split'][dataset_num]['train_end']
+val_start = config[location]['split'][dataset_num]['val_start']
+val_end = config[location]['split'][dataset_num]['val_end']
+test_start = config[location]['split'][dataset_num]['test_start']
+test_end = config[location]['split'][dataset_num]['test_end']
 
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
@@ -65,26 +68,35 @@ criterion = nn.MSELoss()
 def get_data_model_info(model_type, location):
 
     assert location in {'china', 'bihar'}, "Incorrect Location"
-    assert model_type in {'GRU', 'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU'}, "Incorrect model type"
+    assert model_type in {'GRU', 'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU', 'Seq2Seq_GNN_GRU',\
+                          'Seq2Seq_GNN_Transformer'}, "Incorrect model type"
 
-    train_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
-    val_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
-    test_data = Dataset(npy_fp, forecast_window, hist_window, train_start, train_end, data_start, update)
+    train_data = Dataset(npy_fp, forecast_len, hist_len, train_start, train_end, data_start, update)
+    val_data = Dataset(npy_fp, forecast_len, hist_len, val_start, val_end, data_start, update)
+    test_data = Dataset(npy_fp, forecast_len, hist_len, test_start, test_end, data_start, update)
 
     graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
 
     in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
+    '''
+        Decoder input dim: 3, since the last 3 elements are the only known features during forecasting (is_weekend, cyclic hour embedding)
+    '''
+    in_dim_dec = 3
 
     if model_type == 'GRU':
-        model = GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device)
+        model = GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device)
     elif model_type == 'GC_GRU':
-        model = GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+        model = GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_GC_GRU':
-        model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+        model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_Attn_GC_GRU':
-        model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat)
+        model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
+    elif model_type == 'Seq2Seq_GNN_GRU':
+        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
+    elif model_type == 'Seq2Seq_GNN_Transformer':
+        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     # elif model_type == 'DGC_GRU':
-    #     model = DGC_GRU(in_dim, hidden_dim, city_num, hist_window, forecast_window, batch_size, device, graph.adj_mat, graph.angles)
+    #     model = DGC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat, graph.angles)
     else:
         raise Exception('Wrong model name!')
 
@@ -100,10 +112,11 @@ def train(model, loader, optimizer):
         features, pm25 = data
         pm25 = pm25.to(device)
 
-        pm25_label = pm25[:, hist_window:]
-        pm25_hist = pm25[:, :hist_window]
+        pm25_label = pm25[:, hist_len:]
+        # pm25_hist = pm25[:, :hist_len]
 
-        pm25_preds = model(features, pm25_hist)
+        # pm25_preds = model(features, pm25_hist)
+        pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
         loss.backward()
@@ -123,10 +136,11 @@ def val(model, loader):
         features, pm25 = data
         pm25 = pm25.to(device)
 
-        pm25_label = pm25[:, hist_window:]
-        pm25_hist = pm25[:, :hist_window]
+        pm25_label = pm25[:, hist_len:]
+        # pm25_hist = pm25[:, :hist_len]
 
-        pm25_preds = model(features, pm25_hist)
+        # pm25_preds = model(features, pm25_hist)
+        pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
         val_loss += loss.item()
@@ -145,10 +159,11 @@ def test(model, loader, pm25_mean, pm25_std):
         features, pm25 = data
         pm25 = pm25.to(device)
 
-        pm25_label = pm25[:, hist_window:]
-        pm25_hist = pm25[:, :hist_window]
+        pm25_label = pm25[:, hist_len:]
+        # pm25_hist = pm25[:, :hist_len]
 
-        pm25_preds = model(features, pm25_hist)
+        # pm25_preds = model(features, pm25_hist)
+        pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
         test_loss += loss.item()
@@ -163,8 +178,6 @@ def test(model, loader, pm25_mean, pm25_std):
     test_loss /= (batch_idx+1)
 
     y, y_pred = np.array(y), np.array(y_pred)
-    y, y_pred = y.ravel(), y_pred.ravel()
-
     print(eval_stat(y_pred, y, haze_thresh))
     return test_loss
 
@@ -187,7 +200,7 @@ if __name__ == '__main__':
 
     start_time = time.time()
     train_losses, val_losses = [], []
-    model_name = model_type + "_" + str(hist_window) + "_" + str(forecast_window) + ".pth.tar"
+    model_name = model_type + "_" + str(hist_len) + "_" + str(forecast_len) + ".pth.tar"
 
     for epoch in range(num_epochs):
 
@@ -197,10 +210,10 @@ if __name__ == '__main__':
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        if (epoch+1) % (num_epochs // 10) == 0:
-            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-            start_time = time.time()
+        # if (epoch+1) % (num_epochs // 10) == 0:
+        print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+            Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
+        start_time = time.time()
 
             # save_model(model, optimizer, train_losses, val_losses, model_name)
     

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from torch.utils import data
 
 class Dataset(data.Dataset):
-    def __init__(self, data_fp, forecast_window, hist_window, start_date, end_date, data_start, update):
+    def __init__(self, data_fp, forecast_len, hist_len, start_date, end_date, data_start, update):
         '''
             Shape of the numpy array is [t, l, f]
                 t: total number of timestamps
@@ -11,8 +11,8 @@ class Dataset(data.Dataset):
                 f: total number of features (including pm25) for each observation
         '''
         self.npy_data = np.load(data_fp)
-        self.forecast_window = forecast_window
-        self.hist_window = hist_window
+        self.forecast_len = forecast_len
+        self.hist_len = hist_len
         self.start_idx, self.end_idx = self._get_indices(start_date, end_date, data_start, update)
         self.time_arr = self._get_time_arr(start_date, update)
         self._norm()
@@ -50,10 +50,10 @@ class Dataset(data.Dataset):
         return time_arr
 
     def _add_t(self, arr):
-        # Total Time steps >= forecast_window + hist_window
-        assert arr.shape[0] > self.forecast_window + self.hist_window
+        # Total Time steps >= forecast_len + hist_len
+        assert arr.shape[0] > self.forecast_len + self.hist_len
 
-        seq_len = self.forecast_window+self.hist_window
+        seq_len = self.forecast_len+self.hist_len
         arr_ts = []
 
         for i in range(seq_len, arr.shape[0]):

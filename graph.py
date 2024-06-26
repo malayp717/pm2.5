@@ -18,13 +18,13 @@ class Graph():
         self.dist_thresh = dist_thresh
         self.alt_thresh = alt_thresh
 
-        self.edge_indices = self._gen_edge_indices()
+        self.edge_indices, self.edge_weights = self._gen_edge_indices()
 
         if location == 'china':
             self.altitude = np.load(alt_fp)
-            self.edge_indices = self._update_edge_indices()
+            self.edge_indices, self.edge_weights = self._update_edge_indices()
         
-        self.adj_mat = to_dense_adj(torch.tensor(self.edge_indices)).squeeze()
+        self.adj_mat = to_dense_adj(edge_index=self.edge_indices, edge_attr=self.edge_weights).squeeze()
     
     def _lonlat2xy(self, lon, lat, is_alti):
         if is_alti:
@@ -56,12 +56,13 @@ class Graph():
 
     def _gen_edge_indices(self):
         dist_mat = distance.cdist(self.locs, self.locs, metric=(lambda u, v : haversine_dist(u, v)))
-        dist_mat = np.where(dist_mat <= self.dist_thresh, True, False)
-        edge_indices, _ = dense_to_sparse(torch.tensor(dist_mat))
-        return edge_indices
+        dist_mat = np.where(dist_mat <= self.dist_thresh, dist_mat, 0)
+        edge_indices, edge_weights = dense_to_sparse(torch.tensor(dist_mat))
+        edge_weights = edge_weights.max() / edge_weights
+        return torch.LongTensor(edge_indices), edge_weights.float()
     
     def _update_edge_indices(self):
-        edge_indices = []
+        edge_indices, edge_weights = [], []
 
         for i in range(self.edge_indices.shape[1]):
             src, dst = self.edge_indices[0, i], self.edge_indices[1, i]
@@ -78,5 +79,6 @@ class Graph():
             if np.sum(altitude_points - altitude_src > self.alt_thresh) < 3 and \
                np.sum(altitude_points - altitude_dest > self.alt_thresh) < 3:
                 edge_indices.append(self.edge_indices[:,i])
+                edge_weights.append(self.edge_weights[i])
             
-        return np.stack(edge_indices, axis=1)
+        return torch.stack(edge_indices, axis=1), torch.tensor(edge_weights)

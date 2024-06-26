@@ -5,7 +5,7 @@ dirpath:
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
 
-location: china
+location: bihar
 
 bihar:
   filepath:
@@ -19,17 +19,19 @@ bihar:
     haze: 75
 
   dataset:
+    num: 1
     update: 1
     data_start: [2023, 5, 1]
     data_end: [2024, 1, 31]
 
   split:
-    train_start: [2023, 5, 1]
-    train_end: [2023, 12, 31]
-    val_start: [2024, 1, 1]
-    val_end: [2024, 1, 15]
-    test_start: [2024, 1, 16]
-    test_end: [2024, 1, 31]
+    1:
+      train_start: [2023, 5, 1]
+      train_end: [2023, 12, 31]
+      val_start: [2024, 1, 1]
+      val_end: [2024, 1, 15]
+      test_start: [2024, 1, 16]
+      test_end: [2024, 1, 31]
 
   meteo_var: ['rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp']
 
@@ -64,23 +66,41 @@ china:
       'vorticity+950']
 
   dataset:
+    num: 1
     update: 3
     data_start: [2015, 1, 1]
     data_end: [2018, 12, 31]
 
   split:
-    train_start: [2015, 1, 1]
-    train_end: [2016, 12, 31]
-    val_start: [2017, 1, 1]
-    val_end: [2018, 1, 1]
-    test_start: [2018, 1, 1]
-    test_end: [2018, 12, 31]
+    1:
+      train_start: [2015, 1, 1]
+      train_end: [2016, 12, 31]
+      val_start: [2017, 1, 1]
+      val_end: [2017, 12, 31]
+      test_start: [2018, 1, 1]
+      test_end: [2018, 12, 31]
+
+    2:
+      train_start: [2015, 11, 1]
+      train_end: [2016, 2, 28]
+      val_start: [2016, 11, 1]
+      val_end: [2017, 2, 28]
+      test_start: [2017, 11, 1]
+      test_end: [2018, 2, 28]
+
+    3:
+      train_start: [2016, 9, 1]
+      train_end: [2016, 11, 30]
+      val_start: [2016, 12, 1]
+      val_end: [2016, 12, 31]
+      test_start: [2017, 1, 1]
+      test_end: [2017, 1, 31]
   
 train:
   batch_size: 64
-  num_epochs: 50
-  forecast_window: 24
-  hist_window: 24
-  hidden_dim: 64
-  lr: 0.0005
+  num_epochs: 1
+  forecast_len: 24
+  hist_len: 12
+  hidden_dim: 32
+  lr: 0.001
   model: Seq2Seq_GC_GRU
