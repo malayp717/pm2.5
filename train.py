@@ -6,7 +6,7 @@ import sys
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-# from torch.optim import lr_scheduler
+from torch.optim import lr_scheduler
 from dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
@@ -71,17 +71,18 @@ def get_data_model_info(model_type, location):
     assert model_type in {'GRU', 'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU', 'Seq2Seq_GNN_GRU',\
                           'Seq2Seq_GNN_Transformer'}, "Incorrect model type"
 
-    train_data = Dataset(npy_fp, forecast_len, hist_len, train_start, train_end, data_start, update)
-    val_data = Dataset(npy_fp, forecast_len, hist_len, val_start, val_end, data_start, update)
-    test_data = Dataset(npy_fp, forecast_len, hist_len, test_start, test_end, data_start, update)
-
     graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
+    num_locs = graph.num_locs
+
+    train_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, train_start, train_end, data_start, update)
+    val_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, val_start, val_end, data_start, update)
+    test_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, test_start, test_end, data_start, update)
 
     in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
     '''
         Decoder input dim: 3, since the last 3 elements are the only known features during forecasting (is_weekend, cyclic hour embedding)
     '''
-    in_dim_dec = 3
+    in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
 
     if model_type == 'GRU':
         model = GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device)
@@ -92,7 +93,7 @@ def get_data_model_info(model_type, location):
     elif model_type == 'Seq2Seq_Attn_GC_GRU':
         model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_GNN_GRU':
-        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
+        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_GNN_Transformer':
         model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     # elif model_type == 'DGC_GRU':
@@ -197,6 +198,7 @@ if __name__ == '__main__':
     model.to(device)
     print(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
     start_time = time.time()
     train_losses, val_losses = [], []
@@ -210,12 +212,13 @@ if __name__ == '__main__':
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        # if (epoch+1) % (num_epochs // 10) == 0:
-        print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-            Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-        start_time = time.time()
+        if (epoch+1) % (num_epochs // 10) == 0:
+            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
+            start_time = time.time()
 
             # save_model(model, optimizer, train_losses, val_losses, model_name)
+        scheduler.step()
     
     train_loss = test(model, train_loader, pm25_mean, pm25_std)
     val_loss = test(model, val_loader, pm25_mean, pm25_std)

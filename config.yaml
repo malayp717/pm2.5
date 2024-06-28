@@ -5,7 +5,7 @@ dirpath:
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
 
-location: bihar
+location: china
 
 bihar:
   filepath:
@@ -97,10 +97,10 @@ china:
       test_end: [2017, 1, 31]
   
 train:
-  batch_size: 64
-  num_epochs: 1
+  batch_size: 16
+  num_epochs: 50
   forecast_len: 24
-  hist_len: 12
+  hist_len: 72
   hidden_dim: 32
   lr: 0.001
-  model: Seq2Seq_GC_GRU
+  model: Seq2Seq_GNN_GRU

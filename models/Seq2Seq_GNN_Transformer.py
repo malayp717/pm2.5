@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from itertools import product
-from models.MultiHeadAttention import MultiHeadAttention
+from models.Attention import MultiHeadAttention
 from torch_geometric.nn import GraphConv
 from torch_geometric.utils import dense_to_sparse
 
