@@ -1,12 +1,10 @@
 import numpy as np
 
 class MeteoDataset():
-    def __init__(self, timestamp, latitude, longitude, block, district):
+    def __init__(self, timestamp, latitude, longitude):
         self.timestamp = timestamp
         self.latitude = latitude
         self.longitude = longitude
-        self.block = block
-        self.district = district
         self.rh = None
         self.temp = None
         self.pm25 = None

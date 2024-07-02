@@ -1,3 +1,5 @@
+import os
+import yaml
 import numpy as np
 import pandas as pd
 # from utils import eval_stat
@@ -5,6 +7,17 @@ import faiss
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import KNNImputer, SimpleImputer, IterativeImputer
 from sklearn.preprocessing import StandardScaler
+
+proj_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+with open(f'{proj_dir}/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# ------------- Config parameters start ------------- #
+location = 'bihar'
+meteo_var = config[location]['meteo_var']
+data_dir = config['dirpath']['data_dir']
+# ------------- Config parameters end ------------- #
 
 ''' Use inbuilt sklearn functions to fill the missing nan values in the data '''
 def impute(data, method='iterative'):
@@ -21,7 +34,7 @@ def impute(data, method='iterative'):
         imputer = SimpleImputer(missing_values=np.nan, strategy='mean')
     # Iterative Imputer
     elif method == 'iterative':
-        imputer = IterativeImputer(random_state=0, min_value=0)
+        imputer = IterativeImputer(random_state=0)
     
     imputed_data = imputer.fit_transform(normalized_data)
     return scaler.inverse_transform(imputed_data)
@@ -52,27 +65,44 @@ def transform_lat_long(orig_df, params_df):
     
     return map(list, zip(*transformed_locs))
 
+def npy_data(df, locations_fp, npy_fp):
+    locations = pd.read_csv(locations_fp, sep='|', header=None)
+    locs_grouped = df.groupby(['longitude', 'latitude'])
+
+    locs_to_index_dict = {}
+
+    for idx, row in locations.iterrows():
+        locs_to_index_dict[(row[3], row[4])] = row[0] 
+
+    T, L, F = len(list(df['timestamp'].unique())), locations.shape[0], df.shape[-1]-5
+    npy_data = np.zeros((T, L, F))
+
+    for loc, group in locs_grouped:
+        group = group.sort_values(by='timestamp')
+        l = locs_to_index_dict[loc]
+
+        for t in range(T):
+            npy_data[t][l] = group.iloc[t][5:]
+
+    with open(npy_fp, 'wb') as f:
+        np.save(f, npy_data)
+
 def impute_data(df, output_meteo_era5_imputed_file, method):
     df['timestamp'] = df['timestamp'].astype('datetime64[ns]')
 
-    orig_data = df.copy(deep=True)[['timestamp', 'latitude', 'longitude', 'rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp', 'pm25']]
+    orig_data = df.copy(deep=True)
     orig_data['timestamp'] = orig_data['timestamp'].values.astype(float)
 
     orig_data = orig_data.to_numpy()
     imputed_data = impute(orig_data, method=method)
-    # print(imputed_data.shape)
 
-    cols = {'timestamp': 'datetime64[ns]', 'block': str, 'district': str, 'latitude': np.float64, 'longitude': np.float64,\
-            'rh': np.float64, 'temp': np.float64, 'blh': np.float64, 'u10': np.float64, 'v10': np.float64,\
-            'kx': np.float64, 'sp': np.float64, 'tp': np.float64, 'pm25': np.float64}
-
-    f_cols = {x: y for x, y in cols.items() if x not in {'timestamp', 'block', 'district'}}
-
-    imputed_df = pd.DataFrame(imputed_data[:,1:], columns=f_cols)
-    imputed_df[['timestamp', 'block', 'district']] = df[['timestamp', 'block', 'district']]
-    imputed_df = imputed_df[[x for x in cols.keys()]]
+    imputed_df = pd.DataFrame(imputed_data, columns=df.columns)
+    imputed_df['timestamp'] = pd.to_datetime(imputed_df['timestamp'])
 
     df = imputed_df.copy(deep=True)
+    df = df[meteo_var]
+    df['rh'] = df['rh'].clip(lower=0)
+    df['pm25'] = df['pm25'].clip(lower=0)
     df.to_pickle(output_meteo_era5_imputed_file, protocol=4)
 
     del imputed_df

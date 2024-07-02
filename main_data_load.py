@@ -1,15 +1,30 @@
+import os
+import sys
 import numpy as np
 import time
 import warnings
 warnings.filterwarnings('ignore')
+import yaml
 import pandas as pd
 import geopandas as gpd
-import argparse
-from constants import *
+# import argparse
+# from constants import *
 from data.load_meteo_data import create_meteo_dataframe
 from data.load_era5_data import create_era5_dataframe
-from data.eda_utils import impute_data
+from data.eda_utils import impute_data, npy_data
 from pathlib import Path
+
+proj_dir = os.path.dirname(os.path.abspath(__file__))
+
+with open(f'{proj_dir}/config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+# ------------- Config parameters start ------------- #
+location = 'bihar'
+data_dir = config['dirpath']['data_dir']
+
+meteo_var = config[location]['meteo_var']
+# ------------- Config parameters end ------------- #
 
 if __name__ == '__main__':
 
@@ -28,12 +43,12 @@ if __name__ == '__main__':
     
     '''----------------- All the file locations are declared here -----------------'''
 
-    pbl_file = f'{data_bihar}/PBLH_may_Dec_2023.nc'
-    other_params_file = f'{data_bihar}/Era5_data_May_Dec_2023.nc'
-    geojson_file = f'{data_bihar}/bihar.json'
-    out_meteo_file = f'{data_bihar}/bihar_meteo_may_jan.pkl'
-    output_meteo_era5_file = f'{data_bihar}/bihar_meteo_era5_may_jan.pkl'
-    output_meteo_era5_imputed_file = f'{data_bihar}/bihar_meteo_era5_may_jan_iterative_imputed.pkl'
+    geojson_file = f'{data_dir}/bihar.json'
+    locations_fp = f'{data_dir}/bihar_locations.txt'
+    out_meteo_file = f'{data_dir}/bihar_meteo_feb_april.pkl'
+    output_meteo_era5_file = f'{data_dir}/bihar_meteo_era5_may_april.pkl'
+    output_meteo_era5_imputed_file = f'{data_dir}/bihar_meteo_era5_may_april_iterative_imputed.pkl'
+    npy_fp = f'{data_dir}/bihar_may_april.npy'
 
     region = gpd.read_file(geojson_file)
 
@@ -42,14 +57,13 @@ if __name__ == '__main__':
 
     '''----------------- All the variables are declared here -----------------'''
 
-    start_date, end_date = pd.Timestamp('2023-05-01 00:00:00'), pd.Timestamp('2024-02-01 00:00:00')
+    start_date, end_date = pd.Timestamp('2024-02-01 00:00:00'), pd.Timestamp('2024-05-01 00:00:00')
 
     # Mapping: File Name to the corresponding row in which the timestamp information starts
-    files = {'Bihar_536_Sensor_Data_Sep_2023_Screened.csv': 7, 'Bihar_536_Sensor_Data_Oct_2023_Screened.csv': 7,\
-        'Bihar_536_Sensor_Data_Nov_2023_Screened.csv': 6, 'Bihar_536_Sensor_Data_Jan_2024_Screened.csv': 6,\
-        'Bihar_536_Sensor_Data_Dec_2023_Screened.csv': 6, 'Bihar_512_Sensor_Data_May_Aug_Screened_Hourly.csv': 6}
+    files = {'Bihar_Feb_2024_Screened.csv': 6, 'Bihar_Mar_2024_Screened.csv': 6,\
+        'Bihar_Apr_2024_Screened.csv': 6}
     
-    params_files = ['era5_may_dec_2023.nc', 'era5_jan_2024.nc']
+    params_files = ['era5_feb_april.nc']
 
     '''----------------- Variables declaration complete -----------------'''
 
@@ -68,7 +82,7 @@ if __name__ == '__main__':
     print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
 
     '''----------------- Meteo Data Load end -----------------'''
-
+    print(df.shape)
     '''----------------- ERA5 Data Load start -----------------'''
 
     start_time = time.time()
@@ -106,3 +120,20 @@ if __name__ == '__main__':
     print(df.count())
     for col, type in zip(df.columns, df.dtypes):
         if type == np.float64 or type == np.float32: print(col, df[col].min(), df[col].max())
+
+    '''----------------- NPY start -----------------'''
+
+    start_time = time.time()
+    print('******\t\tNPY starting\t\t******')
+
+    if Path(npy_fp).is_file():
+        npy_arr = pd.read_pickle(npy_fp)
+    else:
+        npy_arr = npy_data(df, locations_fp, npy_fp)    
+    
+    print('******\t\tNPY completed\t\t******')
+    print(f'Time Elapsed:\t {(time.time() - start_time):.2f} s\n')
+
+    '''----------------- NPY end -----------------'''
+
+    print(npy_arr.shape)

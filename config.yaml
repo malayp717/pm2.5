@@ -5,7 +5,7 @@ dirpath:
   model_dir: /data2/malayp/models/
   plots_dir: /data2/malayp/plots/
 
-location: china
+location: bihar
 
 bihar:
   filepath:
@@ -33,7 +33,7 @@ bihar:
       test_start: [2024, 1, 16]
       test_end: [2024, 1, 31]
 
-  meteo_var: ['rh', 'temp', 'blh', 'u10', 'v10', 'kx', 'sp', 'tp']
+  meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
 
 china:
   filepath:
