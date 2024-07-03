@@ -127,7 +127,7 @@ if __name__ == '__main__':
     print('******\t\tNPY starting\t\t******')
 
     if Path(npy_fp).is_file():
-        npy_arr = pd.read_pickle(npy_fp)
+        npy_arr = np.load(npy_fp)
     else:
         npy_arr = npy_data(df, locations_fp, npy_fp)    
     

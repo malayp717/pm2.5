@@ -32,6 +32,8 @@ class Dataset(data.Dataset):
         overall_mean, overall_std = np.mean(self.npy_data, axis=(0,1)), np.std(self.npy_data, axis=(0,1))
 
         self.feature_mean, self.feature_std = overall_mean[:-1], overall_std[:-1]
+        self.u10_mean, self.u10_std = overall_mean[-3], overall_std[-3]
+        self.v10_mean, self.v10_std = overall_mean[-2], overall_std[-2]
         self.pm25_mean, self.pm25_std = overall_mean[-1], overall_std[-1]
 
         data = (self.npy_data[self.start_idx:self.end_idx+1]-overall_mean) / overall_std

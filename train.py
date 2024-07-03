@@ -9,10 +9,6 @@ from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 from dataset import Dataset
 from models.GRU import GRU
-from models.GC_GRU import GC_GRU
-# from models.DGC_GRU import DGC_GRU
-from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
-from models.Seq2Seq_Attn_GC_GRU import Seq2Seq_Attn_GC_GRU
 from models.Seq2Seq_GNN_GRU import Seq2Seq_GNN_GRU
 from models.Seq2Seq_GNN_Transformer import Seq2Seq_GNN_Transformer
 from graph import Graph
@@ -43,6 +39,7 @@ num_epochs = int(config['train']['num_epochs'])
 forecast_len = int(config['train']['forecast_len'])
 hist_len = int(config['train']['hist_len'])
 hidden_dim = int(config['train']['hidden_dim'])
+edge_dim = int(config['train']['edge_dim'])
 lr = float(config['train']['lr'])
 model_type = config['train']['model']
 
@@ -83,21 +80,17 @@ def get_data_model_info(model_type, location):
         Decoder input dim: 3, since the last 3 elements are the only known features during forecasting (is_weekend, cyclic hour embedding)
     '''
     in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
+    edge_indices, edge_attr = graph.edge_indices, graph.edge_attr
+    u10_mean, u10_std, v10_mean, v10_std = train_data.u10_mean, train_data.u10_std, train_data.v10_mean, train_data.v10_std
 
     if model_type == 'GRU':
         model = GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device)
-    elif model_type == 'GC_GRU':
-        model = GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
-    elif model_type == 'Seq2Seq_GC_GRU':
-        model = Seq2Seq_GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
-    elif model_type == 'Seq2Seq_Attn_GC_GRU':
-        model = Seq2Seq_Attn_GC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
     elif model_type == 'Seq2Seq_GNN_GRU':
-        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device, graph.adj_mat)
+        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                                batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     elif model_type == 'Seq2Seq_GNN_Transformer':
-        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat)
-    # elif model_type == 'DGC_GRU':
-    #     model = DGC_GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device, graph.adj_mat, graph.angles)
+        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size,\
+                                        device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std)
     else:
         raise Exception('Wrong model name!')
 
@@ -185,7 +178,12 @@ def test(model, loader, pm25_mean, pm25_std):
 if __name__ == '__main__':
 
     train_data, val_data, test_data, model = get_data_model_info(model_type, location)
-    pm25_mean, pm25_std = train_data.pm25_mean, train_data.pm25_std
+
+    print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
+    print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
+    print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
+
+    # exit()
 
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
     print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
@@ -220,7 +218,7 @@ if __name__ == '__main__':
             # save_model(model, optimizer, train_losses, val_losses, model_name)
         scheduler.step()
     
-    train_loss = test(model, train_loader, pm25_mean, pm25_std)
-    val_loss = test(model, val_loader, pm25_mean, pm25_std)
-    test_loss = test(model, test_loader, pm25_mean, pm25_std)
+    train_loss = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
+    val_loss = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
+    test_loss = test(model, test_loader, train_data.pm25_mean, train_data.pm25_std)
     print(f'Test Loss: {test_loss:.4f}')

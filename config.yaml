@@ -9,7 +9,7 @@ location: bihar
 
 bihar:
   filepath:
-    npy_fp: bihar_may_jan.npy
+    npy_fp: bihar_may_april.npy
     locations_fp: bihar_locations.txt
     map_fp: bihar.json
 
@@ -22,16 +22,16 @@ bihar:
     num: 1
     update: 1
     data_start: [2023, 5, 1]
-    data_end: [2024, 1, 31]
+    data_end: [2024, 4, 30]
 
   split:
     1:
       train_start: [2023, 5, 1]
       train_end: [2023, 12, 31]
       val_start: [2024, 1, 1]
-      val_end: [2024, 1, 15]
-      test_start: [2024, 1, 16]
-      test_end: [2024, 1, 31]
+      val_end: [2024, 2, 29]
+      test_start: [2024, 3, 1]
+      test_end: [2024, 4, 30]
 
   meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
 
@@ -97,10 +97,11 @@ china:
       test_end: [2017, 1, 31]
   
 train:
-  batch_size: 16
+  batch_size: 8
   num_epochs: 50
   forecast_len: 24
   hist_len: 72
   hidden_dim: 32
+  edge_dim: 5
   lr: 0.001
   model: Seq2Seq_GNN_GRU

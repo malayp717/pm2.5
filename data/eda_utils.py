@@ -74,7 +74,7 @@ def npy_data(df, locations_fp, npy_fp):
     for idx, row in locations.iterrows():
         locs_to_index_dict[(row[3], row[4])] = row[0] 
 
-    T, L, F = len(list(df['timestamp'].unique())), locations.shape[0], df.shape[-1]-5
+    T, L, F = len(list(df['timestamp'].unique())), locations.shape[0], df.shape[-1]-3
     npy_data = np.zeros((T, L, F))
 
     for loc, group in locs_grouped:
@@ -82,7 +82,7 @@ def npy_data(df, locations_fp, npy_fp):
         l = locs_to_index_dict[loc]
 
         for t in range(T):
-            npy_data[t][l] = group.iloc[t][5:]
+            npy_data[t][l] = group.iloc[t][-9:]
 
     with open(npy_fp, 'wb') as f:
         np.save(f, npy_data)
