@@ -9,13 +9,14 @@ location: bihar
 
 bihar:
   filepath:
+    pkl_fp: bihar_meteo_era5_may_april_iterative_imputed.pkl
     npy_fp: bihar_may_april.npy
     locations_fp: bihar_locations.txt
     map_fp: bihar.json
 
   threshold:
-    distance: 50
-    wind: 1.5
+    distance: 5
+    # wind: 1.5
     haze: 75
 
   dataset:
@@ -44,7 +45,7 @@ china:
   threshold:
     distance: 500
     altitude: 1200
-    wind: 1.5
+    # wind: 1.5
     haze: 75
 
   meteo_var: ['100m_u_component_of_wind',
@@ -97,10 +98,10 @@ china:
       test_end: [2017, 1, 31]
   
 train:
-  batch_size: 8
-  num_epochs: 50
+  batch_size: 64
+  num_epochs: 30
   forecast_len: 24
-  hist_len: 72
+  hist_len: 24
   hidden_dim: 32
   edge_dim: 5
   lr: 0.001

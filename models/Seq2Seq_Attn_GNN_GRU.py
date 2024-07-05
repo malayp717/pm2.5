@@ -25,14 +25,14 @@ class Encoder(nn.Module):
         self.batch_size = batch_size
 
         self.device = device
+        # self.edge_indices, self.edge_attr = self._process_graph(edge_indices, edge_attr)
         self.edge_indices, self.edge_attr = edge_indices, edge_attr
         self.u10_mean, self.u10_std = u10_mean, u10_std
         self.v10_mean, self.v10_std = v10_mean, v10_std
 
         self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
         # self.conv = GraphConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim)
-        self.conv = TransformerConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim,
-                                    heads=4, dropout=0.5)
+        self.conv = TransformerConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim)
         # self.conv = GATConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim)
         self.gru_cell = GRUCell(self.in_dim -1 + self.emb_dim + 2*self.out_dim + self.hid_dim, self.hid_dim)
         self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
@@ -104,6 +104,7 @@ class Encoder(nn.Module):
         h0 = torch.zeros(self.batch_size * self.city_num, self.hid_dim).to(self.device)
         hn = h0
         xn = torch.zeros(self.batch_size, self.city_num, self.out_dim).to(self.device)
+        H, preds = [], []
 
         for i in range(self.hist_len):
             emb = self.spt_emb(X[:, i, :, -1].long())
@@ -113,6 +114,7 @@ class Encoder(nn.Module):
             edge_indices, edge_attr = self._compute_edge_attr(X[:, i, :, : -1])
 
             x_gcn = x_gcn.view(self.batch_size * self.city_num, -1)
+            # x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=self.edge_indices, edge_weight=self.edge_weights))
             x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=edge_indices, edge_attr=edge_attr))
             x_gcn = x_gcn.view(self.batch_size, self.city_num, -1)
 
@@ -122,7 +124,12 @@ class Encoder(nn.Module):
             xn = hn.view(self.batch_size, self.city_num, self.hid_dim)
             xn = self.fc_out(xn)
 
-        return hn, xn
+            H.append(hn.view(self.batch_size, self.city_num, self.hid_dim))
+            preds.append(xn)
+
+        preds = torch.stack(preds, dim=1)
+        H = torch.stack(H, dim=1)
+        return H, preds
 
 '''
     Decoder part for the PM2.5 Forecasting implementation
@@ -143,17 +150,22 @@ class Decoder(nn.Module):
         self.device = device
 
         self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
+        # self.fc_in = nn.Linear(self.emb_dim + self.out_dim, self.hid_dim)
         self.gru_cell = GRUCell(self.emb_dim + self.out_dim, self.hid_dim)
+        # self.gru_cell = GRUCell(self.emb_dim + self.out_dim + self.hid_dim, self.hid_dim)
+        self.attn = Attention(self.hid_dim)
         self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
 
-    def forward(self, X, hn, xn):
+    def forward(self, X, H, xn):
 
         ''' 
             X shape: [batch_size, hist_len+forecast_len, city_num, num_features]
             H shape: [batch_size, hist_len, city_num, hid_dim]
             xn shape: [batch_size, city_num, out_dim]
         '''
-        X, hn, xn = X.to(self.device), hn.to(self.device), xn.to(self.device)
+        X, H, xn = X.to(self.device), H.to(self.device), xn.to(self.device)
+        hn = H[:, -1].contiguous().view(self.batch_size * self.city_num, self.hid_dim).to(self.device)
+
         preds = []
 
         for i in range(self.forecast_len):
@@ -161,19 +173,25 @@ class Decoder(nn.Module):
             x = torch.cat((xn, emb), dim=-1)
             x = x.contiguous()
 
-            hn = self.gru_cell(x, hn)
-            xn = hn.view(self.batch_size, self.city_num, self.hid_dim)
+            # x_in = self.fc_in(x)
+            # x = torch.cat((x, x_in), dim=-1).contiguous()
 
-            xn = self.fc_out(xn)
+            hn = self.gru_cell(x, hn)
+            hn = hn.view(self.batch_size, self.city_num, self.hid_dim)
+            hn = self.attn(H, hn)
+
+            xn = self.fc_out(hn)
+            hn = hn.view(self.batch_size * self.city_num, self.hid_dim)
+
             preds.append(xn)
         
         preds = torch.stack(preds, dim=1)
         return preds
 
-class Seq2Seq_GNN_GRU(nn.Module):
+class Seq2Seq_Attn_GNN_GRU(nn.Module):
     def __init__(self, in_dim_enc, in_dim_dec, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device,\
                  edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim):
-        super(Seq2Seq_GNN_GRU, self).__init__()
+        super(Seq2Seq_Attn_GNN_GRU, self).__init__()
 
         self.batch_size = batch_size
         self.city_num = city_num
@@ -187,7 +205,8 @@ class Seq2Seq_GNN_GRU(nn.Module):
 
     def forward(self, X, y):
         
-        hn, xn = self.Encoder(X, y)
-        preds = self.Decoder(X, hn, xn)
+        H, xn = self.Encoder(X, y)
+        xn = xn[:, -1].contiguous()
+        preds = self.Decoder(X, H, xn)
 
         return preds

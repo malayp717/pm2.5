@@ -1,7 +1,6 @@
 import numpy as np
 from shapely.geometry import Point, Polygon
 from scipy.ndimage import gaussian_filter
-from constants import *
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg') 
@@ -14,7 +13,7 @@ def coordinate_bounds(region):
     min_long, max_long = coordinates_bound['minx'].min(), coordinates_bound['maxx'].max()
     return min_lat, max_lat, min_long, max_long
 
-def get_indices(grid_long, grid_lat, region):
+def get_indices(grid_long, grid_lat, region, mask_fp):
     points = [Point(lon, lat) for lon, lat in zip(grid_long.flatten(), grid_lat.flatten())]
     mask = np.zeros(len(points), dtype=bool)
 
@@ -25,6 +24,7 @@ def get_indices(grid_long, grid_lat, region):
     # Reshape the mask to match the shape of your original meshgrid
     mask_reshaped = mask.reshape(grid_lat.shape)
 
+    np.savetxt(mask_fp, mask_reshaped, fmt='%5i', delimiter='\t')
     return mask_reshaped
 
 def favorable_points(grid_long, grid_lat, grid_values, region):
@@ -62,7 +62,6 @@ def create_plot(data_long, data_lat, values, region, path, type):
     plt.colorbar(scatter, ax=ax, label=f'Predicted $PM_{2.5}$')
     # plt.colorbar(scatter, ax=ax, label='Predicted $PM_{2.5}$', orientation='vertical', extend='both', ticks=ticks)
     # cbar.set_clim(0, 1000)
-
 
     ax.set_axis_off()
     plt.savefig(f'{path}.jpg', dpi=400)

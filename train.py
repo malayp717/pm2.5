@@ -10,6 +10,7 @@ from torch.optim import lr_scheduler
 from dataset import Dataset
 from models.GRU import GRU
 from models.Seq2Seq_GNN_GRU import Seq2Seq_GNN_GRU
+from models.Seq2Seq_Attn_GNN_GRU import Seq2Seq_Attn_GNN_GRU
 from models.Seq2Seq_GNN_Transformer import Seq2Seq_GNN_Transformer
 from graph import Graph
 from utils import eval_stat, save_model
@@ -82,6 +83,7 @@ def get_data_model_info(model_type, location):
     in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
     edge_indices, edge_attr = graph.edge_indices, graph.edge_attr
     u10_mean, u10_std, v10_mean, v10_std = train_data.u10_mean, train_data.u10_std, train_data.v10_mean, train_data.v10_std
+    print(edge_indices.size(), edge_attr.size())
 
     if model_type == 'GRU':
         model = GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device)
@@ -179,11 +181,9 @@ if __name__ == '__main__':
 
     train_data, val_data, test_data, model = get_data_model_info(model_type, location)
 
-    print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
-    print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
-    print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
-
-    # exit()
+    # print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
+    # print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
+    # print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
 
     print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
     print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
@@ -215,7 +215,7 @@ if __name__ == '__main__':
                 Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
             start_time = time.time()
 
-            # save_model(model, optimizer, train_losses, val_losses, model_name)
+            save_model(model, optimizer, train_losses, val_losses, model_name)
         scheduler.step()
     
     train_loss = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
