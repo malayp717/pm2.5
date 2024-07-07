@@ -114,3 +114,36 @@ class Attention(nn.Module):
 
         # out = torch.bmm(weights, H).squeeze()
         return out.view(batch_size, num_locs, hid_dim)
+
+class LuongAttention(nn.Module):
+    def __init__(self, hid_dim):
+        super(LuongAttention, self).__init__()
+        self.hid_dim = hid_dim
+
+        self.W = nn.Linear(self.hid_dim, self.hid_dim)
+
+    def forward(self, H, x):
+        '''
+            H shape: [batch_size, hist_len, num_locs, hid_dim]
+            x shape: [batch_size, num_locs, hid_dim]
+        '''
+        batch_size, hist_len, num_locs, hid_dim = H.size()
+
+        # H shape: [batch_size * num_locs, hist_len, hid_dim]
+        H = H.transpose(1, 2).contiguous().view(batch_size * num_locs, hist_len, hid_dim)
+        # x shape: [batch_size * num_locs, hist_len, 1, hid_dim]
+        x = x.view(batch_size * num_locs, 1, hid_dim)
+
+        # out shape: [batch_size * num_locs, hist_len, hid_dim]
+        out = self.W(H)
+        # scores shape: [batch_size * num_locs, 1, hist_len]
+        scores = torch.bmm(x, out.transpose(1, 2))
+        # weights shape: [batch_size * num_locs, hist_len, 1]
+        weights = torch.softmax(scores, dim=2).view(batch_size * num_locs, hist_len, 1)
+
+        # out shape: [batch_size * num_locs, hist_len, hid_dim]
+        out = weights * H
+        # out shape: [batch_size * num_locs, hid_dim]
+        out = torch.sum(out, dim=1)
+
+        return out.view(batch_size, num_locs, hid_dim)

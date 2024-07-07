@@ -2,17 +2,20 @@ import numpy as np
 import torch
 import torch.nn as nn
 from itertools import product
+from metpy.units import units
+from metpy.calc import wind_direction, wind_speed
 from models.Attention import MultiHeadAttention
-from torch_geometric.nn import GraphConv
+from torch_geometric.nn import TransformerConv
 from torch_geometric.utils import dense_to_sparse
 
 '''
     Encoder part for the PM2.5 History implementation
 '''
 class Encoder(nn.Module):
-    def __init__(self, in_dim, hid_dim, city_num, hist_len, batch_size, device, adj_mat):
+    def __init__(self, in_dim, emb_dim, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
+                    edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim):
         super(Encoder, self).__init__()
-        self.emb_dim = 8
+        self.emb_dim = emb_dim
         self.in_dim = in_dim
         self.hid_dim = hid_dim
         self.out_dim = 1
@@ -22,19 +25,71 @@ class Encoder(nn.Module):
         self.batch_size = batch_size
 
         self.device = device
-        self.edge_indices, self.edge_weights = self._process_adj_mat(adj_mat)
+        self.edge_indices, self.edge_attr = edge_indices, edge_attr
+        self.u10_mean, self.u10_std = u10_mean, u10_std
+        self.v10_mean, self.v10_std = v10_mean, v10_std
 
         self.pos_emb = nn.Embedding(self.hist_len, self.emb_dim)
-        self.conv = GraphConv(self.in_dim + self.out_dim, self.hid_dim)
+        self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
+        self.conv = TransformerConv(self.in_dim - 1 + self.emb_dim + self.out_dim, self.hid_dim, edge_dim=edge_dim,\
+                                    dropout=0.5)
         self.fc_in = nn.Linear(self.in_dim + self.out_dim + self.emb_dim + self.hid_dim, self.hid_dim)
         self.attention = MultiHeadAttention(self.hid_dim, heads=4, mask=False)
         self.mlp = nn.Linear(self.hid_dim, self.hid_dim)
 
-    def _process_adj_mat(self, adj_mat):
-        adj_mat = adj_mat.repeat(self.batch_size, 1, 1)
-        edge_indices, edge_weights = dense_to_sparse(adj_mat)
+    def _compute_edge_attr(self, X):
+        ''' 
+            edge_indices: [2, E]
+            edge_attr: [E, D]
+            X shape: [batch_size, num_locs, num_features]                   NOTE: X doesn't have embedding column in it
+            last column: v10
+            second last column: u10
+        '''
+        _, D = self.edge_attr.size()
+        edge_attr = self.edge_attr.view(1, -1, D).repeat(self.batch_size, 1, 1)
+        edge_attr = edge_attr.transpose(1, 0).contiguous()
 
-        return edge_indices, edge_weights
+        '''
+            u10 shape: [batch_size, num_locs]
+            v10 shape: [batch_size, num_locs]
+        '''
+        u10 = X[:, :, -2] * self.u10_std + self.u10_mean
+        v10 = X[:, :, -1] * self.v10_std + self.v10_mean
+
+        u10, v10 = u10.cpu().detach().numpy(), v10.cpu().detach().numpy()
+        u10, v10 = u10.reshape(-1) * units('m/s'), v10.reshape(-1) * units('m/s')
+
+        speed = wind_speed(u10, v10).magnitude
+        direction = wind_direction(u10, v10).to('radians').magnitude
+
+        speed, direction = speed.reshape(self.batch_size, self.city_num), direction.reshape(self.batch_size, self.city_num)
+        speed, direction = torch.tensor(speed, dtype=torch.float32), torch.tensor(direction, dtype=torch.float32)
+
+        wind_attr = torch.stack([speed, direction], axis=2).to(self.device)
+
+        EDGE_ATTR = []
+
+        for i in range(self.edge_indices.size(1)):
+            src = self.edge_indices[0, i]
+            # attr: [distance, src_to_dst_angle, wind_speed, wind_direction]
+            attr = torch.concat([edge_attr[src, :, :], wind_attr[:, src, :]], axis=-1)
+
+            theta = torch.abs(attr[:, 1] - attr[:, 3])
+            advection_coeff = torch.relu(3 * attr[:, 2] * torch.cos(theta) / attr[:, 0]).view(-1, 1)
+
+            attr = torch.concat([attr, advection_coeff], axis=-1)
+            EDGE_ATTR.append(attr)
+
+        # EDGE_ATTR shape: [E, batch_size, D]
+        EDGE_ATTR = torch.stack(EDGE_ATTR, axis=0)
+        _, _, D = EDGE_ATTR.size()
+        EDGE_ATTR = EDGE_ATTR.view(-1, D)
+
+        EDGE_INDICES = self.edge_indices.view(2, 1, -1).repeat(1, self.batch_size, 1)\
+                        + torch.arange(self.batch_size).view(1, -1, 1).to(self.device) * self.city_num
+        EDGE_INDICES = EDGE_INDICES.view(2, -1)
+
+        return EDGE_INDICES, EDGE_ATTR
     
     def forward(self, X, y):
 
@@ -43,17 +98,23 @@ class Encoder(nn.Module):
             y shape: [batch_size, hist_len+forecast_len, city_num, 1]
         '''
 
-        self.edge_indices, self.edge_weights = self.edge_indices.to(self.device), self.edge_weights.to(self.device)
+        self.edge_indices, self.edge_attr = self.edge_indices.to(self.device), self.edge_attr.to(self.device)
         X, y = X.to(self.device), y.to(self.device)
         X, y = X[:, :self.hist_len], y[:, :self.hist_len]
 
         '''
-            Positional Embeddings shape: [batch_size, hist_len, city_num, 8]
+            Positional Embeddings shape: [batch_size, hist_len, city_num, emb_dim]
         '''
         pos_emb = self.pos_emb(torch.arange(self.hist_len).to(self.device))
         pos_emb = pos_emb.repeat(self.batch_size * self.city_num, 1, 1)
         pos_emb = pos_emb.view(self.batch_size, self.city_num, self.hist_len, -1)
         pos_emb = pos_emb.transpose(1, 2).contiguous()
+
+        '''
+            Embeddings for Spatio Temporal Features: [batch_size, hist_len, city_num, emb_dim]
+        '''
+        spt_emb = self.spt_emb(X[:, :, :, -1].long())
+        emb = pos_emb + spt_emb
         word_emb = []
 
         '''
@@ -61,12 +122,14 @@ class Encoder(nn.Module):
         '''
 
         for i in range(self.hist_len):
-
-            x = torch.cat((y[:, i], X[:, i]), dim=-1)
+            
+            x = torch.cat((emb[:, i], y[:, i], X[:, i, :, :-1]), dim=-1)
             x_gcn = x.contiguous()
 
+            edge_indices, edge_attr = self._compute_edge_attr(X[:, i, :, : -1])
+
             x_gcn = x_gcn.view(self.batch_size * self.city_num, -1)
-            x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=self.edge_indices, edge_weight=self.edge_weights))
+            x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=edge_indices, edge_attr=edge_attr))
             x_gcn = x_gcn.view(self.batch_size, self.city_num, -1)
 
             word_emb.append(x_gcn)
@@ -88,9 +151,9 @@ class Encoder(nn.Module):
     Decoder part for the PM2.5 Forecasting implementation
 '''
 class Decoder(nn.Module):
-    def __init__(self, in_dim, hid_dim, city_num, hist_len, forecast_len, batch_size, device):
+    def __init__(self, in_dim, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device):
         super(Decoder, self).__init__()
-        self.emb_dim = 8
+        self.emb_dim = emb_dim
         self.in_dim = in_dim
         self.hid_dim = hid_dim
         self.out_dim = 1
@@ -103,51 +166,24 @@ class Decoder(nn.Module):
         self.device = device
 
         self.pos_emb = nn.Embedding(self.forecast_len, self.emb_dim)
-        '''
-            no of hours in day = 24
-            weekday/weekend = 2
-            Therefore, total possibilities (size) = 24*2 = 48
-        '''
-        # self.word_emb = nn.Embedding(48, self.emb_dim)
-        self.fc_in = nn.Linear(self.in_dim + self.emb_dim, 2*self.emb_dim)
+        self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
+        self.fc_in = nn.Linear(self.emb_dim, 2*self.emb_dim)
         self.self_attention = MultiHeadAttention(2*self.emb_dim, heads=4, mask=True)
         self.fc_enc_dec = nn.Linear(2*self.emb_dim, self.hid_dim)
         self.enc_dec_attention = MultiHeadAttention(self.hid_dim, heads=4, mask=False)
         self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
 
-    def get_indices_mat(self, X):
-        def cyc_emb(t):
-            angle = (2.0 * np.pi * t) / 24.0
-            return (np.sin(angle), np.cos(angle))
-        
-        t = [cyc_emb(i) for i in range(24)]
-        combs = list(product(t, np.arange(0.0, 2.0, 1.0)))
-        emb = [(x[0][0], x[0][1], x[1]) for x in combs]
-
-        vector_to_index = {x: i for i, x in enumerate(emb)}
-
-        batch_size, forecast_len, city_num, num_features = X.size()
-
-        x = X.reshape(-1, num_features).contiguous()
-        indices = []
-        for row in x:
-            idx = vector_to_index[tuple(row.tolist())]
-            indices.append(idx)
-
-        indices = torch.tensor(indices)
-        return indices.view(batch_size, forecast_len, city_num)
-
     def forward(self, X, enc_out):
 
         '''
             X shape: [batch_size, hist_len+forecast_len, city_num, num_features]
-            new X shape: [batch_size, forecast_len, city_num, 3], since only last 3 features available at forecasting time
+            emb shape: [batch_size, forecast_len, city_num, emb_dim], since only last feature is available at forecasting time
         '''
         X = X.to(self.device)
-        X = X[:, self.hist_len:, :, -3:]
+        X = X[:, self.hist_len:, :, -1]
 
         '''
-            Positional Embeddings shape: [batch_size, forecast_len, city_num, 8]
+            Positional Embeddings shape: [batch_size, forecast_len, city_num, emb_dim]
         '''
         pos_emb = self.pos_emb(torch.arange(self.forecast_len).to(self.device))
         pos_emb = pos_emb.repeat(self.batch_size * self.city_num, 1, 1)
@@ -155,18 +191,12 @@ class Decoder(nn.Module):
         pos_emb = pos_emb.transpose(1, 2).contiguous()
         
         '''
-            Word Embeddings shape: [batch_size, forecast_len, city_num, 8]
-            Concat: [batch_size, forecast_len, city_num, 16 (=8+8)]
+            Word Embeddings shape: [batch_size, forecast_len, city_num, emb_dim]
+            out shape: [batch_size, forecast_len, city_num, emb_dim]
         '''
-        # word_emb = self.get_indices_mat(X)
-        # word_emb = self.word_emb(word_emb)
+        spt_emb = self.spt_emb(X.long())
 
-        # out = torch.cat((pos_emb, word_emb), dim=-1)
-
-        '''
-            out shape: [batch_size, forecast_len, city_num, 11 (=8+3)]
-        '''
-        out = torch.cat((X, pos_emb), dim=-1)
+        out = pos_emb + spt_emb
         out = out.transpose(1, 2).contiguous().view(self.batch_size * self.city_num, self.forecast_len, -1)
         out = self.fc_in(out).view(self.batch_size, self.city_num, self.forecast_len, -1).transpose(1, 2).contiguous()
 
@@ -190,7 +220,8 @@ class Decoder(nn.Module):
         return preds
 
 class Seq2Seq_GNN_Transformer(nn.Module):
-    def __init__(self, in_dim_enc, in_dim_dec, hid_dim, city_num, hist_len, forecast_len, batch_size, device, adj_mat):
+    def __init__(self, in_dim_enc, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device,\
+                 edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim):
         super(Seq2Seq_GNN_Transformer, self).__init__()
 
         self.batch_size = batch_size
@@ -199,8 +230,9 @@ class Seq2Seq_GNN_Transformer(nn.Module):
         self.out_dim = 1
         self.hist_len = hist_len
 
-        self.Encoder = Encoder(in_dim_enc, hid_dim, city_num, hist_len, batch_size, device, adj_mat)
-        self.Decoder = Decoder(in_dim_dec, hid_dim, city_num, hist_len, forecast_len, batch_size, device)
+        self.Encoder = Encoder(in_dim_enc, emb_dim, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
+                               edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
+        self.Decoder = Decoder(in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
 
     def forward(self, X, y):
         

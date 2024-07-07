@@ -34,8 +34,9 @@ def eval_stat(y_pred, y, haze_thresh):
         'FAR': round(far, 4)
     }
 
-def save_model(model, optimizer, train_loss, val_loss, fp):
+def save_model(epoch, model, optimizer, train_loss, val_loss, fp):
     state = {
+        'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'train_loss': train_loss,
@@ -46,4 +47,4 @@ def save_model(model, optimizer, train_loss, val_loss, fp):
 
 def load_model(fp):
     state = torch.load(fp)
-    return state['model_state_dict'], state['optimizer_state_dict'], state['train_loss'], state['val_loss']
+    return state['epoch'], state['model_state_dict'], state['optimizer_state_dict'], state['train_loss'], state['val_loss']

@@ -8,12 +8,14 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 from dataset import Dataset
-from models.GRU import GRU
+from models.Seq2Seq_GRU import Seq2Seq_GRU
+from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
 from models.Seq2Seq_GNN_GRU import Seq2Seq_GNN_GRU
 from models.Seq2Seq_Attn_GNN_GRU import Seq2Seq_Attn_GNN_GRU
 from models.Seq2Seq_GNN_Transformer import Seq2Seq_GNN_Transformer
 from graph import Graph
-from utils import eval_stat, save_model
+from utils import eval_stat, save_model, load_model
+from pathlib import Path
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -39,7 +41,8 @@ batch_size = int(config['train']['batch_size'])
 num_epochs = int(config['train']['num_epochs'])
 forecast_len = int(config['train']['forecast_len'])
 hist_len = int(config['train']['hist_len'])
-hidden_dim = int(config['train']['hidden_dim'])
+emb_dim = int(config['train']['emb_dim'])
+hid_dim = int(config['train']['hid_dim'])
 edge_dim = int(config['train']['edge_dim'])
 lr = float(config['train']['lr'])
 model_type = config['train']['model']
@@ -66,8 +69,8 @@ criterion = nn.MSELoss()
 def get_data_model_info(model_type, location):
 
     assert location in {'china', 'bihar'}, "Incorrect Location"
-    assert model_type in {'GRU', 'GC_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_Attn_GC_GRU', 'DGC_GRU', 'Seq2Seq_GNN_GRU',\
-                          'Seq2Seq_GNN_Transformer'}, "Incorrect model type"
+    assert model_type in {'Seq2Seq_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_GNN_GRU', 'Seq2Seq_Attn_GNN_GRU', 'Seq2Seq_GNN_Transformer'},\
+                            "Incorrect model type"
 
     graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
     num_locs = graph.num_locs
@@ -83,16 +86,22 @@ def get_data_model_info(model_type, location):
     in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
     edge_indices, edge_attr = graph.edge_indices, graph.edge_attr
     u10_mean, u10_std, v10_mean, v10_std = train_data.u10_mean, train_data.u10_std, train_data.v10_mean, train_data.v10_std
-    print(edge_indices.size(), edge_attr.size())
+    print(f'Edge Indices Shape: {edge_indices.size()}, Edge Attr Shape: {edge_attr.size()}')
 
-    if model_type == 'GRU':
-        model = GRU(in_dim, hidden_dim, city_num, hist_len, forecast_len, batch_size, device)
+    if model_type == 'Seq2Seq_GRU':
+        model = Seq2Seq_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
+    elif model_type == 'Seq2Seq_GC_GRU':
+        model = Seq2Seq_GC_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                               batch_size, device, edge_indices)
     elif model_type == 'Seq2Seq_GNN_GRU':
-        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, hidden_dim, city_num, num_embeddings, hist_len, forecast_len,\
+        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                                batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
+    elif model_type == 'Seq2Seq_Attn_GNN_GRU':
+        model = Seq2Seq_Attn_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                 batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     elif model_type == 'Seq2Seq_GNN_Transformer':
-        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, hidden_dim, city_num, hist_len, forecast_len, batch_size,\
-                                        device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std)
+        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                                        batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     else:
         raise Exception('Wrong model name!')
 
@@ -109,9 +118,6 @@ def train(model, loader, optimizer):
         pm25 = pm25.to(device)
 
         pm25_label = pm25[:, hist_len:]
-        # pm25_hist = pm25[:, :hist_len]
-
-        # pm25_preds = model(features, pm25_hist)
         pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
@@ -133,9 +139,6 @@ def val(model, loader):
         pm25 = pm25.to(device)
 
         pm25_label = pm25[:, hist_len:]
-        # pm25_hist = pm25[:, :hist_len]
-
-        # pm25_preds = model(features, pm25_hist)
         pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
@@ -156,9 +159,6 @@ def test(model, loader, pm25_mean, pm25_std):
         pm25 = pm25.to(device)
 
         pm25_label = pm25[:, hist_len:]
-        # pm25_hist = pm25[:, :hist_len]
-
-        # pm25_preds = model(features, pm25_hist)
         pm25_preds = model(features, pm25)
 
         loss = criterion(pm25_label, pm25_preds)
@@ -181,13 +181,13 @@ if __name__ == '__main__':
 
     train_data, val_data, test_data, model = get_data_model_info(model_type, location)
 
-    # print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
-    # print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
-    # print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
+    print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
+    print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
+    print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
 
-    print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
-    print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
-    print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
+    # print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
+    # print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
+    # print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
     
     train_loader = DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
@@ -199,10 +199,15 @@ if __name__ == '__main__':
     scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
     start_time = time.time()
-    train_losses, val_losses = [], []
-    model_name = model_type + "_" + str(hist_len) + "_" + str(forecast_len) + ".pth.tar"
+    train_losses, val_losses, curr_epoch = [], [], 0
+    model_fp = f'{model_dir}/{model_type}_{hist_len}_{forecast_len}.pth.tar'
 
-    for epoch in range(num_epochs):
+    # if Path(model_fp).is_file():
+    #     curr_epoch, model_state_dict, optimizer_state_dict, train_losses, val_losses = load_model(model_fp)
+    #     model.load_state_dict(model_state_dict)
+    #     optimizer.load_state_dict(optimizer_state_dict)
+
+    for epoch in range(curr_epoch, num_epochs):
 
         train_loss = train(model, train_loader, optimizer)
         val_loss = val(model, val_loader)
@@ -215,7 +220,7 @@ if __name__ == '__main__':
                 Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
             start_time = time.time()
 
-            save_model(model, optimizer, train_losses, val_losses, model_name)
+            save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
         scheduler.step()
     
     train_loss = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)

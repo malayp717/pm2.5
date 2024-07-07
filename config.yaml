@@ -1,9 +1,9 @@
 ---
 dirpath:
-  proj_dir: /data2/malayp/pm2.5/
-  data_dir: /data2/malayp/data/
-  model_dir: /data2/malayp/models/
-  plots_dir: /data2/malayp/plots/
+  proj_dir: /home/malay/pm25/pm2.5/
+  data_dir: /hdd/malay/data/
+  model_dir: /hdd/malay/models/
+  plots_dir: /hdd/malay/plots/
 
 location: bihar
 
@@ -16,8 +16,7 @@ bihar:
 
   threshold:
     distance: 5
-    # wind: 1.5
-    haze: 75
+    haze: 100
 
   dataset:
     num: 1
@@ -43,9 +42,8 @@ china:
     altitude_fp: china_altitude.npy
 
   threshold:
-    distance: 500
+    distance: 10
     altitude: 1200
-    # wind: 1.5
     haze: 75
 
   meteo_var: ['100m_u_component_of_wind',
@@ -102,7 +100,8 @@ train:
   num_epochs: 30
   forecast_len: 24
   hist_len: 24
-  hidden_dim: 32
+  emb_dim: 16
+  hid_dim: 32
   edge_dim: 5
   lr: 0.001
-  model: Seq2Seq_GNN_GRU
+  model: Seq2Seq_Attn_GNN_GRU

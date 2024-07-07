@@ -4,18 +4,17 @@ import torch.nn as nn
 from metpy.units import units
 from metpy.calc import wind_direction, wind_speed
 from models.cells import GRUCell
-from models.Attention import Attention
-from torch_geometric.nn import ChebConv, GraphConv, TransformerConv, GATConv
-from torch_geometric.utils import dense_to_sparse
+from models.Attention import Attention, LuongAttention
+from torch_geometric.nn import TransformerConv, GATConv
 
 '''
     Encoder part for the PM2.5 History implementation
 '''
 class Encoder(nn.Module):
-    def __init__(self, in_dim, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
+    def __init__(self, in_dim, emb_dim, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
                  edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim):
         super(Encoder, self).__init__()
-        self.emb_dim = 16
+        self.emb_dim = emb_dim
         self.in_dim = in_dim
         self.hid_dim = hid_dim
         self.out_dim = 1
@@ -25,16 +24,14 @@ class Encoder(nn.Module):
         self.batch_size = batch_size
 
         self.device = device
-        # self.edge_indices, self.edge_attr = self._process_graph(edge_indices, edge_attr)
         self.edge_indices, self.edge_attr = edge_indices, edge_attr
         self.u10_mean, self.u10_std = u10_mean, u10_std
         self.v10_mean, self.v10_std = v10_mean, v10_std
 
         self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
-        # self.conv = GraphConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim)
-        self.conv = TransformerConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim)
-        # self.conv = GATConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim)
-        self.gru_cell = GRUCell(self.in_dim -1 + self.emb_dim + 2*self.out_dim + self.hid_dim, self.hid_dim)
+        self.conv = TransformerConv(self.in_dim - 1 + self.emb_dim + 2*self.out_dim, self.hid_dim, edge_dim=edge_dim,\
+                                    dropout=0.5)
+        self.gru_cell = GRUCell(self.in_dim - 1 + self.emb_dim + 2*self.out_dim + self.hid_dim, self.hid_dim)
         self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
 
     def _compute_edge_attr(self, X):
@@ -101,8 +98,7 @@ class Encoder(nn.Module):
         self.edge_indices, self.edge_attr = self.edge_indices.to(self.device), self.edge_attr.to(self.device)
         X, y = X.to(self.device), y.to(self.device)
 
-        h0 = torch.zeros(self.batch_size * self.city_num, self.hid_dim).to(self.device)
-        hn = h0
+        hn = torch.zeros(self.batch_size * self.city_num, self.hid_dim).to(self.device)
         xn = torch.zeros(self.batch_size, self.city_num, self.out_dim).to(self.device)
         H, preds = [], []
 
@@ -114,7 +110,6 @@ class Encoder(nn.Module):
             edge_indices, edge_attr = self._compute_edge_attr(X[:, i, :, : -1])
 
             x_gcn = x_gcn.view(self.batch_size * self.city_num, -1)
-            # x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=self.edge_indices, edge_weight=self.edge_weights))
             x_gcn = torch.sigmoid(self.conv(x=x_gcn, edge_index=edge_indices, edge_attr=edge_attr))
             x_gcn = x_gcn.view(self.batch_size, self.city_num, -1)
 
@@ -135,9 +130,9 @@ class Encoder(nn.Module):
     Decoder part for the PM2.5 Forecasting implementation
 '''
 class Decoder(nn.Module):
-    def __init__(self, in_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device):
+    def __init__(self, in_dim, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device):
         super(Decoder, self).__init__()
-        self.emb_dim = 16
+        self.emb_dim = emb_dim
         self.in_dim = in_dim
         self.hid_dim = hid_dim
         self.out_dim = 1
@@ -150,10 +145,9 @@ class Decoder(nn.Module):
         self.device = device
 
         self.spt_emb = nn.Embedding(num_embeddings, embedding_dim=self.emb_dim)
-        # self.fc_in = nn.Linear(self.emb_dim + self.out_dim, self.hid_dim)
         self.gru_cell = GRUCell(self.emb_dim + self.out_dim, self.hid_dim)
-        # self.gru_cell = GRUCell(self.emb_dim + self.out_dim + self.hid_dim, self.hid_dim)
-        self.attn = Attention(self.hid_dim)
+        # self.attn = Attention(self.hid_dim)
+        self.attn = LuongAttention(self.hid_dim)
         self.fc_out = nn.Linear(self.hid_dim, self.out_dim)
 
     def forward(self, X, H, xn):
@@ -173,9 +167,6 @@ class Decoder(nn.Module):
             x = torch.cat((xn, emb), dim=-1)
             x = x.contiguous()
 
-            # x_in = self.fc_in(x)
-            # x = torch.cat((x, x_in), dim=-1).contiguous()
-
             hn = self.gru_cell(x, hn)
             hn = hn.view(self.batch_size, self.city_num, self.hid_dim)
             hn = self.attn(H, hn)
@@ -189,7 +180,7 @@ class Decoder(nn.Module):
         return preds
 
 class Seq2Seq_Attn_GNN_GRU(nn.Module):
-    def __init__(self, in_dim_enc, in_dim_dec, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device,\
+    def __init__(self, in_dim_enc, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device,\
                  edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim):
         super(Seq2Seq_Attn_GNN_GRU, self).__init__()
 
@@ -199,9 +190,9 @@ class Seq2Seq_Attn_GNN_GRU(nn.Module):
         self.out_dim = 1
         self.hist_len = hist_len
 
-        self.Encoder = Encoder(in_dim_enc, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
+        self.Encoder = Encoder(in_dim_enc, emb_dim, hid_dim, city_num, num_embeddings, hist_len, batch_size, device,\
                                edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
-        self.Decoder = Decoder(in_dim_dec, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
+        self.Decoder = Decoder(in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
 
     def forward(self, X, y):
         
