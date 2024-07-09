@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy import stats
 import torch
 
@@ -33,6 +34,11 @@ def eval_stat(y_pred, y, haze_thresh):
         'POD': round(pod, 4), 
         'FAR': round(far, 4)
     }
+
+def final_stats(stats):
+    df = pd.DataFrame(data=stats)
+    stats = {col: f'{round(x, 4)} \u00B1 {round(y, 4)}' for (col, x, y) in zip(df.columns, df.mean(axis=0), df.std(axis=0))}
+    return stats
 
 def save_model(epoch, model, optimizer, train_loss, val_loss, fp):
     state = {

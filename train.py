@@ -1,20 +1,20 @@
-import numpy as np
 import time
 import yaml
 import os
 import sys
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import lr_scheduler
 from dataset import Dataset
-from models.Seq2Seq_GRU import Seq2Seq_GRU
-from models.Seq2Seq_GC_GRU import Seq2Seq_GC_GRU
-from models.Seq2Seq_GNN_GRU import Seq2Seq_GNN_GRU
-from models.Seq2Seq_Attn_GNN_GRU import Seq2Seq_Attn_GNN_GRU
-from models.Seq2Seq_GNN_Transformer import Seq2Seq_GNN_Transformer
+from models.GRU import GRU
+from models.GC_GRU import GC_GRU
+from models.GNN_GRU import GNN_GRU
+from models.Attn_GNN_GRU import Attn_GNN_GRU
+from models.GNN_Transformer import GNN_Transformer
 from graph import Graph
-from utils import eval_stat, save_model, load_model
+from utils import eval_stat, save_model, load_model, final_stats
 from pathlib import Path
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -38,6 +38,7 @@ altitude_fp = data_dir + config[location]['filepath']['altitude_fp'] if location
 # map_fp = data_dir + config[location]['filepath']['map_fp'] if location == 'bihar' else None
 
 batch_size = int(config['train']['batch_size'])
+num_exp = int(config['train']['num_exp'])
 num_epochs = int(config['train']['num_epochs'])
 forecast_len = int(config['train']['forecast_len'])
 hist_len = int(config['train']['hist_len'])
@@ -46,6 +47,7 @@ hid_dim = int(config['train']['hid_dim'])
 edge_dim = int(config['train']['edge_dim'])
 lr = float(config['train']['lr'])
 model_type = config['train']['model']
+attn = config['train']['attn'] if model_type == 'Attn_GNN_GRU' else None
 
 dataset_num = int(config[location]['dataset']['num'])
 update = int(config[location]['dataset']['update'])
@@ -66,11 +68,9 @@ test_end = config[location]['split'][dataset_num]['test_end']
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
-def get_data_model_info(model_type, location):
+def get_data_info(location):
 
     assert location in {'china', 'bihar'}, "Incorrect Location"
-    assert model_type in {'Seq2Seq_GRU', 'Seq2Seq_GC_GRU', 'Seq2Seq_GNN_GRU', 'Seq2Seq_Attn_GNN_GRU', 'Seq2Seq_GNN_Transformer'},\
-                            "Incorrect model type"
 
     graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
     num_locs = graph.num_locs
@@ -79,33 +79,47 @@ def get_data_model_info(model_type, location):
     val_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, val_start, val_end, data_start, update)
     test_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, test_start, test_end, data_start, update)
 
+    return train_data, val_data, test_data, graph
+
+def get_model_info(model_type, train_data, graph=None, attn=None):
+
+    assert model_type in {'GRU', 'GC_GRU', 'GNN_GRU', 'Attn_GNN_GRU', 'GNN_Transformer'},\
+                            "Incorrect model type"
+    
+    if model_type not in {'GRU'}:
+        assert graph is not None
+
+    if model_type == 'Attn_GNN_GRU':
+        assert attn in {'luong', 'graph'}
+
     in_dim, city_num = train_data.feature.shape[-1], train_data.feature.shape[-2]
+    num_locs = graph.num_locs
     '''
         Decoder input dim: 3, since the last 3 elements are the only known features during forecasting (is_weekend, cyclic hour embedding)
     '''
     in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
     edge_indices, edge_attr = graph.edge_indices, graph.edge_attr
     u10_mean, u10_std, v10_mean, v10_std = train_data.u10_mean, train_data.u10_std, train_data.v10_mean, train_data.v10_std
-    print(f'Edge Indices Shape: {edge_indices.size()}, Edge Attr Shape: {edge_attr.size()}')
+    # print(f'Edge Indices Shape: {edge_indices.size()}, Edge Attr Shape: {edge_attr.size()}')
 
-    if model_type == 'Seq2Seq_GRU':
-        model = Seq2Seq_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
-    elif model_type == 'Seq2Seq_GC_GRU':
-        model = Seq2Seq_GC_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+    if model_type == 'GRU':
+        model = GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len, batch_size, device)
+    elif model_type == 'GC_GRU':
+        model = GC_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                batch_size, device, edge_indices)
-    elif model_type == 'Seq2Seq_GNN_GRU':
-        model = Seq2Seq_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+    elif model_type == 'GNN_GRU':
+        model = GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                 batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
-    elif model_type == 'Seq2Seq_Attn_GNN_GRU':
-        model = Seq2Seq_Attn_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
-                                batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
-    elif model_type == 'Seq2Seq_GNN_Transformer':
-        model = Seq2Seq_GNN_Transformer(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+    elif model_type == 'Attn_GNN_GRU':
+        model = Attn_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                                batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim, attn)
+    elif model_type == 'GNN_Transformer':
+        model = GNN_Transformer(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                         batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     else:
         raise Exception('Wrong model name!')
 
-    return train_data, val_data, test_data, model
+    return model
 
 def train(model, loader, optimizer):
     model.train()
@@ -174,16 +188,16 @@ def test(model, loader, pm25_mean, pm25_std):
     test_loss /= (batch_idx+1)
 
     y, y_pred = np.array(y), np.array(y_pred)
-    print(eval_stat(y_pred, y, haze_thresh))
-    return test_loss
+    stats_dict = eval_stat(y_pred, y, haze_thresh)
+    stats_dict.update({'loss': round(test_loss, 4)})
+    return stats_dict
 
 if __name__ == '__main__':
 
-    train_data, val_data, test_data, model = get_data_model_info(model_type, location)
-
-    print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
-    print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
-    print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
+    train_data, val_data, test_data, graph = get_data_info(location)
+    # print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
+    # print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
+    # print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
 
     # print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
     # print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
@@ -193,37 +207,66 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
 
-    model.to(device)
-    print(model)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+    train_stats, val_stats, test_stats = [], [], []
 
-    start_time = time.time()
-    train_losses, val_losses, curr_epoch = [], [], 0
-    model_fp = f'{model_dir}/{model_type}_{hist_len}_{forecast_len}.pth.tar'
+    for i in range(num_exp):
+        print(f'----------------------- Experiment number: {i} start -----------------------')
 
-    # if Path(model_fp).is_file():
-    #     curr_epoch, model_state_dict, optimizer_state_dict, train_losses, val_losses = load_model(model_fp)
-    #     model.load_state_dict(model_state_dict)
-    #     optimizer.load_state_dict(optimizer_state_dict)
+        model = get_model_info(model_type, train_data, graph, attn)
 
-    for epoch in range(curr_epoch, num_epochs):
+        model.to(device)
+        print(model)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=5e-2)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 
-        train_loss = train(model, train_loader, optimizer)
-        val_loss = val(model, val_loader)
+        start_time = time.time()
+        train_losses, val_losses, curr_epoch = [], [], 0
+        model_fp = f'{model_dir}/{model_type}_{hist_len}_{forecast_len}_{i}.pth.tar' if attn == None\
+                    else f'{model_dir}/{model_type}_{attn}_{hist_len}_{forecast_len}_{i}.pth.tar'
 
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
+        if Path(model_fp).is_file():
+            curr_epoch, model_state_dict, optimizer_state_dict, train_losses, val_losses = load_model(model_fp)
+            model.load_state_dict(model_state_dict)
+            optimizer.load_state_dict(optimizer_state_dict)
 
-        if (epoch+1) % (num_epochs // 10) == 0:
-            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-            start_time = time.time()
+        for epoch in range(curr_epoch, num_epochs):
 
-            save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
-        scheduler.step()
+            train_loss = train(model, train_loader, optimizer)
+            val_loss = val(model, val_loader)
+
+            train_losses.append(train_loss)
+            val_losses.append(val_loss)
+
+            if (epoch+1) % (num_epochs // 10) == 0:
+                print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+                    Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
+                start_time = time.time()
+
+                save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
+            scheduler.step()
+        
+        train_stat = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
+        val_stat = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
+        test_stat = test(model, test_loader, train_data.pm25_mean, train_data.pm25_std)
+
+        train_stats.append(train_stat)
+        val_stats.append(val_stat)
+        test_stats.append(test_stat)
+
+        print(f'Train: {train_stat}')
+        print(f'Val: {val_stat}')
+        print(f'Test: {test_stat}')
+        print(f'----------------------- Experiment number: {i} end -----------------------\n\n')
     
-    train_loss = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
-    val_loss = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
-    test_loss = test(model, test_loader, train_data.pm25_mean, train_data.pm25_std)
-    print(f'Test Loss: {test_loss:.4f}')
+    print(f'----------------------- Overall Stats (mu \u00B1 std) -----------------------')
+    print('Train Stats:')
+    train_stats = final_stats(train_stats)
+    print(f'{train_stats}\n')
+
+    print('Val Stats:')
+    val_stats = final_stats(val_stats)
+    print(f'{val_stats}\n')
+
+    print('Test Stats:')
+    test_stats = final_stats(test_stats)
+    print(f'{test_stats}\n')
