@@ -148,30 +148,24 @@ class GraphAttention(nn.Module):
         # x shape: [batch_size * num_locs, hist_len, 1, hid_dim]
         x = x.view(batch_size * num_locs, 1, hid_dim)
 
-        H = H.view(batch_size * num_locs * hist_len, hid_dim)
-        self.edge_indices = self.edge_indices.view(2, 1, -1).repeat(1, batch_size * num_locs, 1)\
-                        + torch.arange(batch_size * num_locs).view(1, -1, 1).to(self.device) * hist_len
-        self.edge_indices = self.edge_indices.view(2, -1)
+        H_gcn = []
 
-        H_gcn = torch.sigmoid(self.conv(x=H, edge_index=self.edge_indices))
-        H_gcn = H_gcn.view(batch_size * num_locs, hist_len, hid_dim)
-
-        # for i in range(hist_len):
-        #     # x shape: [batch_size * num_locs, hid_dim]
-        #     h = H[:, i]
-        #     # x_gcn shape: [batch_size * num_locs, hid_dim]
-        #     h_gcn = torch.sigmoid(self.conv(x=h, edge_index=self.edge_indices))
-        #     H_gcn.append(h_gcn)
+        for i in range(hist_len):
+            # h shape: [batch_size * num_locs, hid_dim]
+            h = H[:, i]
+            # x_gcn shape: [batch_size * num_locs, hid_dim]
+            h_gcn = torch.sigmoid(self.conv(x=h, edge_index=self.edge_indices))
+            H_gcn.append(h_gcn)
 
         # H_gcn shape: [batch_size * num_locs, hist_len, hid_dim]
-        # H_gcn = torch.stack(H_gcn, dim=1)
+        H_gcn = torch.stack(H_gcn, dim=1)
         # scores shape: [batch_size * num_locs, 1, hist_len]
         scores = torch.bmm(x, H_gcn.transpose(1, 2))
         # weights shape: [batch_size * num_locs, hist_len, 1]
         weights = torch.softmax(scores, dim=2).view(batch_size * num_locs, hist_len, 1)
 
         # out shape: [batch_size * num_locs, hist_len, hid_dim]
-        out = weights * H
+        out = weights * H_gcn
         # out shape: [batch_size * num_locs, hid_dim]
         out = torch.sum(out, dim=1)
 

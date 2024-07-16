@@ -5,96 +5,31 @@ dirpath:
   model_dir: /hdd/malay/models/
   plots_dir: /hdd/malay/plots/
 
-location: bihar
+filepath:
+  pkl_fp: bihar_meteo_era5_may_april_iterative_imputed.pkl
+  npy_fp: bihar_may_april.npy
+  locations_fp: bihar_locations.txt
+  map_fp: bihar.json
 
-bihar:
-  filepath:
-    pkl_fp: bihar_meteo_era5_may_april_iterative_imputed.pkl
-    npy_fp: bihar_may_april.npy
-    locations_fp: bihar_locations.txt
-    map_fp: bihar.json
+threshold:
+  distance: 5
+  haze: 100
 
-  threshold:
-    distance: 5
-    haze: 100
+dataset:
+  update: 1
+  data_start: [2023, 5, 1]
+  data_end: [2024, 4, 30]
 
-  dataset:
-    num: 1
-    update: 1
-    data_start: [2023, 5, 1]
-    data_end: [2024, 4, 30]
+split:
+  train_start: [2023, 5, 1]
+  train_end: [2023, 12, 31]
+  val_start: [2024, 1, 1]
+  val_end: [2024, 2, 29]
+  test_start: [2024, 3, 1]
+  test_end: [2024, 4, 30]
 
-  split:
-    1:
-      train_start: [2023, 5, 1]
-      train_end: [2023, 12, 31]
-      val_start: [2024, 1, 1]
-      val_end: [2024, 2, 29]
-      test_start: [2024, 3, 1]
-      test_end: [2024, 4, 30]
+meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
 
-  meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
-
-china:
-  filepath:
-    npy_fp: KnowAir.npy
-    locations_fp: china_locations.txt
-    altitude_fp: china_altitude.npy
-
-  threshold:
-    distance: 10
-    altitude: 1200
-    haze: 75
-
-  meteo_var: ['100m_u_component_of_wind',
-      '100m_v_component_of_wind',
-      '2m_dewpoint_temperature',
-      '2m_temperature',
-      'boundary_layer_height',
-      'k_index',
-      'relative_humidity+950',
-      'relative_humidity+975',
-      'specific_humidity+950',
-      'surface_pressure',
-      'temperature+925',
-      'temperature+950',
-      'total_precipitation',
-      'u_component_of_wind+950',
-      'v_component_of_wind+950',
-      'vertical_velocity+950',
-      'vorticity+950']
-
-  dataset:
-    num: 1
-    update: 3
-    data_start: [2015, 1, 1]
-    data_end: [2018, 12, 31]
-
-  split:
-    1:
-      train_start: [2015, 1, 1]
-      train_end: [2016, 12, 31]
-      val_start: [2017, 1, 1]
-      val_end: [2017, 12, 31]
-      test_start: [2018, 1, 1]
-      test_end: [2018, 12, 31]
-
-    2:
-      train_start: [2015, 11, 1]
-      train_end: [2016, 2, 28]
-      val_start: [2016, 11, 1]
-      val_end: [2017, 2, 28]
-      test_start: [2017, 11, 1]
-      test_end: [2018, 2, 28]
-
-    3:
-      train_start: [2016, 9, 1]
-      train_end: [2016, 11, 30]
-      val_start: [2016, 12, 1]
-      val_end: [2016, 12, 31]
-      test_start: [2017, 1, 1]
-      test_end: [2017, 1, 31]
-  
 train:
   batch_size: 32
   num_exp: 1
@@ -105,5 +40,5 @@ train:
   hid_dim: 32
   edge_dim: 5
   lr: 0.001
-  attn: graph
+  attn: luong
   model: Attn_GNN_GRU

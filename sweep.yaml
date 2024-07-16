@@ -1,0 +1,28 @@
+program: tune.py
+method: bayes
+
+project: PM2.5
+entity: malayp717
+
+metric:
+  name: val_loss
+  goal: minimize
+
+parameters:
+  lr:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 1e-2
+  weight_decay:
+    distribution: log_uniform_values
+    min: 5e-4
+    max: 5e-2
+  hid_dim:
+    distribution: categorical
+    values: [16, 32, 48, 64]
+  emb_dim:
+    distribution: categorical
+    values: [8, 16]
+  num_epochs:
+    distribution: categorical
+    values: [30, 40, 50]

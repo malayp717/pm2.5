@@ -4,7 +4,6 @@ import os
 import yaml
 import time
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from plots.map_utils import *
@@ -55,7 +54,34 @@ def monthly_csv(data_ts_dict, mask):
         df = pd.DataFrame({'latitude': grid_lat[mask], 'longitude': grid_long[mask], 'pm25': pm25[mask]})
         df.to_csv(f'{data_dir}/{mnth}.csv', index=False)
 
-    print(f'Time taken: {time.time()-start:.3f} s')
+    print(f'Time taken: {(time.time()-start)/60:.3f} mins')
+
+def hourly_csv(data_ts_dict, mask):
+
+    grid_long, grid_lat = np.meshgrid(np.linspace(min_long, max_long, GRID_SIZE), np.linspace(min_lat, max_lat, GRID_SIZE))
+
+    '''
+        hourly_vals is a dictionary with mapping: hour -> [pm25, number of observations]
+    '''
+    hourly_vals = {hr: [np.zeros((GRID_SIZE, GRID_SIZE)), 0] for hr in range(24)}
+
+    start = time.time()
+
+    for date, row in data_ts_dict.items():
+        hr = date.hour
+        # print(row)
+        grid_values = griddata((row['latitude'], row['longitude']), row['pm25'], (grid_lat, grid_long), method='nearest')
+        lcn_val = LCN(grid_long, grid_lat, grid_values)
+        hourly_vals[hr][0] = np.add(hourly_vals[hr][0], lcn_val)
+        hourly_vals[hr][1] += 1
+
+    for hr, row in hourly_vals.items():
+        if row[1] == 0: continue
+        pm25 = row[0] / row[1]
+        df = pd.DataFrame({'latitude': grid_lat[mask], 'longitude': grid_long[mask], 'pm25': pm25[mask]})
+        df.to_csv(f'{data_dir}/{hr}.csv', index=False)
+
+    print(f'Time taken: {(time.time()-start)/60:.3f} mins')
 
 def weekday_weekend_csv(data_ts_dict, mask):
 
@@ -95,7 +121,7 @@ def weekday_weekend_csv(data_ts_dict, mask):
     weekday_df.to_csv(f'{data_dir}/weekday.csv', index=False)
     weekend_df.to_csv(f'{data_dir}/weekend.csv', index=False)
 
-    print(f'Time taken: {time.time()-start:.3f} s')
+    print(f'Time taken: {(time.time()-start)/60:.3f} mins')
 
 def seasonal_csv():
     seasons = {
@@ -123,53 +149,37 @@ def seasonal_csv():
         df['pm25']/=len(season)
         df.to_csv(f'{data_dir}/{name}.csv', index=False)
 
-    print(f'Time taken: {time.time()-start:.3f} s')
+    print(f'Time taken: {(time.time()-start)/60:.3f} mins')
 
-def plots(bihar):
+def plots(bihar, file):
 
     start_time = time.time()
 
-    days = ['weekday', 'weekend']
+    df = pd.read_csv(f'{data_dir}/{file}.csv')
+    # print(df.head())
 
-    for d in days:
-        df = pd.read_csv(f'{data_dir}/{d}.csv')
-        # print(df.head())
+    grid_long, grid_lat, pm25 = df['longitude'], df['latitude'], df['pm25']
+    # print(len(grid_long), len(grid_lat), len(pm25))
 
-        grid_long, grid_lat, pm25 = df['longitude'], df['latitude'], df['pm25']
-        # print(len(grid_long), len(grid_lat), len(pm25))
+    create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{file}_absolute', 'absolute')
+    create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{file}_relative', 'relative')
 
-        create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{d}_absolute', 'absolute')
-        create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{d}_relative', 'relative')
-
-        print(f'{d}: {time.time()-start_time} s')
-        start_time = time.time()
-
-    # for mnth in MONTHS:
-    #     df = pd.read_csv(f'{data_dir}/{mnth}.csv')
-    #     # print(df.head())
-
-    #     grid_long, grid_lat, pm25 = df['longitude'], df['latitude'], df['pm25']
-    #     # print(len(grid_long), len(grid_lat), len(pm25))
-
-    #     create_plot(grid_long, grid_lat, pm25, bihar, f'{bihar_plot_dir}/map_LCN_{mnth}_absolute', 'absolute')
-    #     create_plot(grid_long, grid_lat, pm25, bihar, f'{bihar_plot_dir}/map_LCN_{mnth}_relative', 'relative')
-
-    #     print(f'{mnth}: {time.time()-start_time} s')
-    #     start_time = time.time()
+    print(f'{file}: {(time.time()-start_time)/60:.3f} mins')
 
 if __name__ == '__main__':
 
     bihar = gpd.read_file(map_fp)
     df = pd.read_pickle(pkl_fp)
     df['pm25'] = df['pm25'].astype(np.float64)
-    df = df[['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'pm25']]
+    df = df[['timestamp', 'longitude', 'latitude', 'pm25']]
+    df['timestamp'] = df['timestamp'].astype('datetime64[ns]')
 
     min_lat, max_lat, min_long, max_long = coordinate_bounds(bihar)
     # print(min_lat, max_lat, min_long, max_long)
 
     '''
         data_ts_dict: Dictionary that maps timestamp values to corresponding readings
-        Example: Timestamp('2023-05-01 00:00:00'): [timestamp, longitude, latitude, rh, temp, pm25]
+        Example: Timestamp('2023-05-01 00:00:00'): [timestamp, longitude, latitude, pm25]
     '''
     data_ts_dict = {timestamp: group for timestamp, group in df.groupby('timestamp')}
 
@@ -185,7 +195,15 @@ if __name__ == '__main__':
 
     # weekday_weekend_csv(data_ts_dict, mask)
     # monthly_csv(data_ts_dict, mask)
-    # NOTE: Ensure monthly csv's are already generated before running seasonal csv
-    seasonal_csv()
-    # plots(bihar)
+    # hourly_csv(data_ts_dict, mask)
+    # # NOTE: Ensure monthly csv's are already generated before running seasonal csv
+    # seasonal_csv()
+
+    files = ['weekday', 'weekend', 'JJAS', 'ON', 'DJF', 'MA']
+    # files.extend([f'{mnth}' for mnth in MONTHS])
+    files.extend([f'{hr}' for hr in range(24)])
+
+    for f in files:
+        plots(bihar, f)
+
     print(f'Resolution of maps: {np.sqrt(AREA_BIHAR/np.sum(mask))}')
