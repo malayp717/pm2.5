@@ -54,3 +54,20 @@ def save_model(epoch, model, optimizer, train_loss, val_loss, fp):
 def load_model(fp):
     state = torch.load(fp)
     return state['epoch'], state['model_state_dict'], state['optimizer_state_dict'], state['train_loss'], state['val_loss']
+
+class EarlyStopping:
+    def __init__(self, patience=5, verbose=False, delta=0):
+        self.patience = patience
+        self.delta = delta
+        self.counter = 0
+        self.min_val_loss = float('inf')
+
+    def early_stop(self, val_loss):
+        if val_loss < self.min_val_loss:
+            self.min_val_loss = val_loss
+            self.counter = 0
+        elif val_loss > (self.min_val_loss + self.delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False

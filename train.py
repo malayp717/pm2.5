@@ -10,11 +10,11 @@ from torch.optim import lr_scheduler
 from dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
+from models.GraphConv_GRU import GraphConv_GRU
 from models.GNN_GRU import GNN_GRU
 from models.Attn_GNN_GRU import Attn_GNN_GRU
-from models.GNN_Transformer import GNN_Transformer
 from graph import Graph
-from utils import eval_stat, save_model, load_model, final_stats
+from utils import eval_stat, save_model, load_model
 from pathlib import Path
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -30,12 +30,8 @@ with open(config_fp, 'r') as f:
 data_dir = config['dirpath']['data_dir']
 model_dir = config['dirpath']['model_dir']
 
-location = config['location']
-
-npy_fp = data_dir + config[location]['filepath']['npy_fp']
-locations_fp = data_dir + config[location]['filepath']['locations_fp']
-altitude_fp = data_dir + config[location]['filepath']['altitude_fp'] if location == 'china' else None
-# map_fp = data_dir + config[location]['filepath']['map_fp'] if location == 'bihar' else None
+npy_fp = data_dir + config['filepath']['npy_fp']
+locations_fp = data_dir + config['filepath']['locations_fp']
 
 batch_size = int(config['train']['batch_size'])
 num_exp = int(config['train']['num_exp'])
@@ -49,30 +45,26 @@ lr = float(config['train']['lr'])
 model_type = config['train']['model']
 attn = config['train']['attn'] if model_type == 'Attn_GNN_GRU' else None
 
-dataset_num = int(config[location]['dataset']['num'])
-update = int(config[location]['dataset']['update'])
-data_start = config[location]['dataset']['data_start']
-data_end = config[location]['dataset']['data_end']
+update = int(config['dataset']['update'])
+data_start = config['dataset']['data_start']
+data_end = config['dataset']['data_end']
 
-dist_thresh = float(config[location]['threshold']['distance'])
-alt_thresh = float(config[location]['threshold']['altitude']) if location == 'china' else None
-haze_thresh = float(config[location]['threshold']['haze'])
+dist_thresh = float(config['threshold']['distance'])
+haze_thresh = float(config['threshold']['haze'])
 
-train_start = config[location]['split'][dataset_num]['train_start']
-train_end = config[location]['split'][dataset_num]['train_end']
-val_start = config[location]['split'][dataset_num]['val_start']
-val_end = config[location]['split'][dataset_num]['val_end']
-test_start = config[location]['split'][dataset_num]['test_start']
-test_end = config[location]['split'][dataset_num]['test_end']
+train_start = config['split']['train_start']
+train_end = config['split']['train_end']
+val_start = config['split']['val_start']
+val_end = config['split']['val_end']
+test_start = config['split']['test_start']
+test_end = config['split']['test_end']
 
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
-def get_data_info(location):
+def get_data_info():
 
-    assert location in {'china', 'bihar'}, "Incorrect Location"
-
-    graph = Graph(location, locations_fp, dist_thresh, altitude_fp, alt_thresh)
+    graph = Graph(locations_fp, dist_thresh)
     num_locs = graph.num_locs
 
     train_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, train_start, train_end, data_start, update)
@@ -83,7 +75,7 @@ def get_data_info(location):
 
 def get_model_info(model_type, train_data, graph=None, attn=None):
 
-    assert model_type in {'GRU', 'GC_GRU', 'GNN_GRU', 'Attn_GNN_GRU', 'GNN_Transformer'},\
+    assert model_type in {'GRU', 'GC_GRU', 'GraphConv_GRU', 'GNN_GRU', 'Attn_GNN_GRU'},\
                             "Incorrect model type"
     
     if model_type not in {'GRU'}:
@@ -98,7 +90,7 @@ def get_model_info(model_type, train_data, graph=None, attn=None):
         Decoder input dim: 3, since the last 3 elements are the only known features during forecasting (is_weekend, cyclic hour embedding)
     '''
     in_dim_dec, num_embeddings = 1, num_locs * (24 // update) * 2
-    edge_indices, edge_attr = graph.edge_indices, graph.edge_attr
+    edge_indices, edge_weights, edge_attr = graph.edge_indices, graph.edge_weights, graph.edge_attr
     u10_mean, u10_std, v10_mean, v10_std = train_data.u10_mean, train_data.u10_std, train_data.v10_mean, train_data.v10_std
     # print(f'Edge Indices Shape: {edge_indices.size()}, Edge Attr Shape: {edge_attr.size()}')
 
@@ -107,15 +99,15 @@ def get_model_info(model_type, train_data, graph=None, attn=None):
     elif model_type == 'GC_GRU':
         model = GC_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                batch_size, device, edge_indices)
+    elif model_type == 'GraphConv_GRU':
+        model = GraphConv_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
+                               batch_size, device, edge_indices, edge_weights)
     elif model_type == 'GNN_GRU':
         model = GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                 batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     elif model_type == 'Attn_GNN_GRU':
         model = Attn_GNN_GRU(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
                                 batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim, attn)
-    elif model_type == 'GNN_Transformer':
-        model = GNN_Transformer(in_dim, in_dim_dec, emb_dim, hid_dim, city_num, num_embeddings, hist_len, forecast_len,\
-                                        batch_size, device, edge_indices, edge_attr, u10_mean, u10_std, v10_mean, v10_std, edge_dim)
     else:
         raise Exception('Wrong model name!')
 
@@ -194,7 +186,7 @@ def test(model, loader, pm25_mean, pm25_std):
 
 if __name__ == '__main__':
 
-    train_data, val_data, test_data, graph = get_data_info(location)
+    train_data, val_data, test_data, graph = get_data_info()
     # print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
     # print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
     # print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
@@ -209,15 +201,15 @@ if __name__ == '__main__':
 
     train_stats, val_stats, test_stats = [], [], []
 
-    for i in range(num_exp):
+    for i in range(0, 3):
         print(f'----------------------- Experiment number: {i} start -----------------------')
 
         model = get_model_info(model_type, train_data, graph, attn)
 
         model.to(device)
         print(model)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=5e-2)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=3e-3)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
 
         start_time = time.time()
         train_losses, val_losses, curr_epoch = [], [], 0
@@ -237,13 +229,13 @@ if __name__ == '__main__':
             train_losses.append(train_loss)
             val_losses.append(val_loss)
 
-            if (epoch+1) % (num_epochs // 10) == 0:
-                print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-                    Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-                start_time = time.time()
+            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
+                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
 
-                save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
+            save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
             scheduler.step()
+
+            start_time = time.time()
         
         train_stat = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
         val_stat = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
@@ -257,16 +249,3 @@ if __name__ == '__main__':
         print(f'Val: {val_stat}')
         print(f'Test: {test_stat}')
         print(f'----------------------- Experiment number: {i} end -----------------------\n\n')
-    
-    print(f'----------------------- Overall Stats (mu \u00B1 std) -----------------------')
-    print('Train Stats:')
-    train_stats = final_stats(train_stats)
-    print(f'{train_stats}\n')
-
-    print('Val Stats:')
-    val_stats = final_stats(val_stats)
-    print(f'{val_stats}\n')
-
-    print('Test Stats:')
-    test_stats = final_stats(test_stats)
-    print(f'{test_stats}\n')

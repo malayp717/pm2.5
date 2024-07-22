@@ -17,12 +17,6 @@ parameters:
     distribution: log_uniform_values
     min: 5e-4
     max: 5e-2
-  hid_dim:
-    distribution: categorical
-    values: [16, 32, 48, 64]
   emb_dim:
     distribution: categorical
     values: [8, 16]
-  num_epochs:
-    distribution: categorical
-    values: [30, 40, 50]
