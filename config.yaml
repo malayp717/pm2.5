@@ -31,7 +31,7 @@ split:
 meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
 
 train:
-  batch_size: 32
+  batch_size: 128
   num_exp: 5
   num_epochs: 15
   forecast_len: 24
@@ -41,4 +41,4 @@ train:
   edge_dim: 5
   lr: 0.001
   attn: luong
-  model: GNN_GRU
+  model: Attn_GNN_GRU

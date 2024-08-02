@@ -3,10 +3,10 @@ import yaml
 import os
 import sys
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.optim import lr_scheduler
 from dataset import Dataset
 from models.GRU import GRU
 from models.GC_GRU import GC_GRU
@@ -14,8 +14,10 @@ from models.GraphConv_GRU import GraphConv_GRU
 from models.GNN_GRU import GNN_GRU
 from models.Attn_GNN_GRU import Attn_GNN_GRU
 from graph import Graph
-from utils import eval_stat, save_model, load_model
-from pathlib import Path
+from utils import eval_stat, load_model
+
+import warnings
+warnings.filterwarnings('ignore')
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -35,15 +37,9 @@ locations_fp = data_dir + config['filepath']['locations_fp']
 
 batch_size = int(config['train']['batch_size'])
 num_exp = int(config['train']['num_exp'])
-num_epochs = int(config['train']['num_epochs'])
-forecast_len = int(config['train']['forecast_len'])
-hist_len = int(config['train']['hist_len'])
 emb_dim = int(config['train']['emb_dim'])
 hid_dim = int(config['train']['hid_dim'])
 edge_dim = int(config['train']['edge_dim'])
-lr = float(config['train']['lr'])
-model_type = config['train']['model']
-attn = config['train']['attn'] if model_type == 'Attn_GNN_GRU' else None
 
 update = int(config['dataset']['update'])
 data_start = config['dataset']['data_start']
@@ -62,7 +58,7 @@ test_end = config['split']['test_end']
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
-def get_data_info():
+def get_data_info(hist_len, forecast_len):
 
     graph = Graph(locations_fp, dist_thresh)
     num_locs = graph.num_locs
@@ -73,7 +69,7 @@ def get_data_info():
 
     return train_data, val_data, test_data, graph
 
-def get_model_info(model_type, train_data, graph=None, attn=None):
+def get_model_info(model_type, train_data, hist_len, forecast_len, graph=None, attn=None):
 
     assert model_type in {'GRU', 'GC_GRU', 'GraphConv_GRU', 'GNN_GRU', 'Attn_GNN_GRU'},\
                             "Incorrect model type"
@@ -113,47 +109,7 @@ def get_model_info(model_type, train_data, graph=None, attn=None):
 
     return model
 
-def train(model, loader, optimizer):
-    model.train()
-    train_loss = 0
-
-    for batch_idx, data in enumerate(loader):
-        optimizer.zero_grad()
-        
-        features, pm25 = data
-        pm25 = pm25.to(device)
-
-        pm25_label = pm25[:, hist_len:]
-        pm25_preds = model(features, pm25)
-
-        loss = criterion(pm25_label, pm25_preds)
-        loss.backward()
-
-        optimizer.step()
-        train_loss += loss.item()
-    
-    train_loss /= (batch_idx+1)
-    return train_loss
-
-def val(model, loader):
-    model.eval()
-    val_loss = 0
-
-    for batch_idx, data in enumerate(loader):
-        
-        features, pm25 = data
-        pm25 = pm25.to(device)
-
-        pm25_label = pm25[:, hist_len:]
-        pm25_preds = model(features, pm25)
-
-        loss = criterion(pm25_label, pm25_preds)
-        val_loss += loss.item()
-    
-    val_loss /= (batch_idx+1)
-    return val_loss
-
-def test(model, loader, pm25_mean, pm25_std):
+def test(model, loader, pm25_mean, pm25_std, hist_len):
     model.eval()
     test_loss = 0
 
@@ -186,66 +142,45 @@ def test(model, loader, pm25_mean, pm25_std):
 
 if __name__ == '__main__':
 
-    train_data, val_data, test_data, graph = get_data_info()
-    # print(f'u10 mean: {train_data.u10_mean} \t u10 std: {train_data.u10_std}')
-    # print(f'v10 mean: {train_data.v10_mean} \t v10 std: {train_data.v10_std}')
-    # print(f'pm25 mean: {train_data.pm25_mean} \t pm25 std: {train_data.pm25_std}')
+    hist_len, forecast_len = [24, 48], [12, 24]
+    model_types = ['GRU', 'GC_GRU', 'GraphConv_GRU', 'GNN_GRU', 'Attn_GNN_GRU']
+    overall_stats = []
 
-    # print(f'Train Data:\nFeature shape: {train_data.feature.shape} \t PM25 shape: {train_data.pm25.shape}')
-    # print(f'Val Data:\nFeature shape: {val_data.feature.shape} \t PM25 shape: {val_data.pm25.shape}')
-    # print(f'Test Data:\nFeature shape: {test_data.feature.shape} \t PM25 shape: {test_data.pm25.shape}')
+    for hl, fl in zip(hist_len, forecast_len):
+
+        train_data, val_data, test_data, graph = get_data_info(hl, fl)
+
+        train_loader = DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
+        val_loader = DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
+        test_loader = DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
+
+        for model_type in model_types:
     
-    train_loader = DataLoader(train_data, drop_last=True, batch_size=batch_size, shuffle=False)
-    val_loader = DataLoader(val_data, drop_last=True, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_data, drop_last=True, batch_size=batch_size, shuffle=False)
+            test_stats = []
+            attn = config['train']['attn'] if model_type == 'Attn_GNN_GRU' else None
 
-    train_stats, val_stats, test_stats = [], [], []
+            for i in range(num_exp):
 
-    for i in range(num_exp):
-        print(f'----------------------- Experiment number: {i} start -----------------------')
+                model_fp = f'{model_dir}/{model_type}_{hl}_{fl}_{i}.pth.tar' if attn == None\
+                                    else f'{model_dir}/{model_type}_{attn}_{hl}_{fl}_{i}.pth.tar'
+                model = get_model_info(model_type, train_data, hl, fl, graph, attn)
 
-        model = get_model_info(model_type, train_data, graph, attn)
+                model.to(device)
 
-        model.to(device)
-        print(model)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=3e-3)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
+                curr_epoch, model_state_dict, _, train_losses, val_losses = load_model(model_fp)
+                model.load_state_dict(model_state_dict)
 
-        start_time = time.time()
-        train_losses, val_losses, curr_epoch = [], [], 0
-        model_fp = f'{model_dir}/{model_type}_{hist_len}_{forecast_len}_{i}.pth.tar' if attn == None\
-                    else f'{model_dir}/{model_type}_{attn}_{hist_len}_{forecast_len}_{i}.pth.tar'
+                # train_stat = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
+                # val_stat = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
+                test_stat = test(model, test_loader, train_data.pm25_mean, train_data.pm25_std, hl)
+                test_stats.append(test_stat)
 
-        if Path(model_fp).is_file():
-            curr_epoch, model_state_dict, optimizer_state_dict, train_losses, val_losses = load_model(model_fp)
-            model.load_state_dict(model_state_dict)
-            optimizer.load_state_dict(optimizer_state_dict)
+            test_df = pd.DataFrame(data=test_stats)
 
-        for epoch in range(curr_epoch, num_epochs):
+            model_stats = {col: f'{test_df[col].mean():4f} \u00B1 {test_df[col].std():4f}' for col in test_df.columns}
+            model_stats.update({'model': model_type, 'hist_len': hl, 'forecast_len': fl})
 
-            train_loss = train(model, train_loader, optimizer)
-            val_loss = val(model, val_loader)
+            overall_stats.append(model_stats)
 
-            train_losses.append(train_loss)
-            val_losses.append(val_loss)
-
-            print(f'Epoch: {epoch+1}|{num_epochs} \t Train Loss: {train_loss:.4f} \t\
-                Val Loss: {val_loss:.4f} \t Time Taken: {(time.time()-start_time)/60:.4f} mins')
-
-            save_model(epoch+1, model, optimizer, train_losses, val_losses, model_fp)
-            scheduler.step()
-
-            start_time = time.time()
-        
-        train_stat = test(model, train_loader, train_data.pm25_mean, train_data.pm25_std)
-        val_stat = test(model, val_loader, train_data.pm25_mean, train_data.pm25_std)
-        test_stat = test(model, test_loader, train_data.pm25_mean, train_data.pm25_std)
-
-        train_stats.append(train_stat)
-        val_stats.append(val_stat)
-        test_stats.append(test_stat)
-
-        print(f'Train: {train_stat}')
-        print(f'Val: {val_stat}')
-        print(f'Test: {test_stat}')
-        print(f'----------------------- Experiment number: {i} end -----------------------\n\n')
+    overall_df = pd.DataFrame(data=overall_stats)
+    overall_df.to_csv(f'{data_dir}/stats.csv', index=False)

@@ -61,7 +61,7 @@ def create_plot(data_long, data_lat, values, region, path, type):
 
     cbar = plt.colorbar(scatter, ax=ax)
     cbar.ax.tick_params(labelsize=10)
-    cbar.set_label(f'Predicted $PM_{2.5}$', fontsize=12)
+    cbar.set_label(f'$PM_{2.5}$ Concentration', fontsize=12)
 
     ax.set_axis_off()
     plt.savefig(f'{path}.jpg')

@@ -16,11 +16,10 @@ with open(f'{proj_dir}/config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # ------------- Config parameters start ------------- #
-location = 'bihar'
 data_dir = config['dirpath']['data_dir']
 plot_dir = config['dirpath']['plots_dir']
-pkl_fp = data_dir + config[location]['filepath']['pkl_fp']
-map_fp = data_dir + config[location]['filepath']['map_fp']
+pkl_fp = data_dir + config['filepath']['pkl_fp']
+map_fp = data_dir + config['filepath']['map_fp']
 mask_fp = data_dir + '/mask.txt'
 
 GRID_SIZE = 1_000
@@ -162,7 +161,6 @@ def plots(bihar, file):
     # print(len(grid_long), len(grid_lat), len(pm25))
 
     create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{file}_absolute', 'absolute')
-    create_plot(grid_long, grid_lat, pm25, bihar, f'{plot_dir}/map_LCN_{file}_relative', 'relative')
 
     print(f'{file}: {(time.time()-start_time)/60:.3f} mins')
 
@@ -199,9 +197,7 @@ if __name__ == '__main__':
     # # NOTE: Ensure monthly csv's are already generated before running seasonal csv
     # seasonal_csv()
 
-    files = ['weekday', 'weekend', 'JJAS', 'ON', 'DJF', 'MA']
-    # files.extend([f'{mnth}' for mnth in MONTHS])
-    files.extend([f'{hr}' for hr in range(24)])
+    files = ['JJAS', 'ON', 'DJF', 'MA']
 
     for f in files:
         plots(bihar, f)

@@ -14,8 +14,7 @@ with open(f'{proj_dir}/config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # ------------- Config parameters start ------------- #
-location = 'bihar'
-meteo_var = config[location]['meteo_var']
+meteo_var = config['meteo_var']
 data_dir = config['dirpath']['data_dir']
 # ------------- Config parameters end ------------- #
 
