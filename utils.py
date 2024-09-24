@@ -40,20 +40,17 @@ def final_stats(stats):
     stats = {col: f'{round(x, 4)} \u00B1 {round(y, 4)}' for (col, x, y) in zip(df.columns, df.mean(axis=0), df.std(axis=0))}
     return stats
 
-def save_model(epoch, model, optimizer, train_loss, val_loss, fp):
+def save_model(model, optimizer, fp):
     state = {
-        'epoch': epoch,
         'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'train_loss': train_loss,
-        'val_loss': val_loss
+        'optimizer_state_dict': optimizer.state_dict()
     }
 
     torch.save(state, fp)
 
 def load_model(fp):
     state = torch.load(fp)
-    return state['epoch'], state['model_state_dict'], state['optimizer_state_dict'], state['train_loss'], state['val_loss']
+    return state['model_state_dict'], state['optimizer_state_dict']
 
 class EarlyStopping:
     def __init__(self, patience=5, verbose=False, delta=0):

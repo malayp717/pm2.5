@@ -33,7 +33,7 @@ meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp
 train:
   batch_size: 128
   num_exp: 5
-  num_epochs: 15
+  num_epochs: 30
   forecast_len: 24
   hist_len: 48
   emb_dim: 8

@@ -53,13 +53,13 @@ class Dataset(data.Dataset):
     #     return time_arr
 
     def _get_time_arr(self, start_date, update):
-        start_date, incr = datetime(*start_date), timedelta(hours=update)
+        curr_date, incr = datetime(*start_date), timedelta(hours=update)
 
         arr = []
         for _ in range(self.end_idx - self.start_idx + 1):
-            is_weekend = 1 if start_date.weekday() >= 5 else 0
-            arr.append(is_weekend * 24 + start_date.hour)
-            start_date += incr
+            is_weekend = 1 if curr_date.weekday() >= 5 else 0
+            arr.append((is_weekend * 24 + curr_date.hour) // update)
+            curr_date += incr
 
         # arr shape: [T, ]
         arr = np.array(arr)
@@ -67,7 +67,7 @@ class Dataset(data.Dataset):
         arr = np.repeat(arr[np.newaxis, :], self.num_locs, axis=0)
 
         # loc_arr shape: [num_locs, 1]
-        loc_arr = np.arange(self.num_locs) * 48
+        loc_arr = np.arange(self.num_locs) * (48 // update)
         loc_arr = loc_arr[:, np.newaxis]
 
         # arr shape: [num_locs, T]

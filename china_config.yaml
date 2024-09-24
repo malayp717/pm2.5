@@ -1,0 +1,62 @@
+---
+dirpath:
+  proj_dir: /home/malay/pm25/pm2.5/
+  data_dir: /hdd/malay/data/
+  model_dir: /hdd/malay/models/
+  plots_dir: /hdd/malay/plots/
+
+filepath:
+  npy_fp: KnowAir1.npy
+  locations_fp: china_locations.txt
+  altitude_fp: china_altitude.npy
+
+threshold:
+  distance: 300
+  altitude: 1200
+  haze: 75
+
+dataset:
+  update: 3
+  num: 1
+  data_start: [2015, 1, 1, 0, 0]
+  data_end: [2018, 12, 31, 21, 0]
+
+
+split:
+  train_start: [2015, 1, 1]
+  train_end: [2016, 12, 31]
+  val_start: [2017, 1, 1]
+  val_end: [2017, 12, 31]
+  test_start: [2018, 1, 1]
+  test_end: [2018, 12, 31]
+  
+meteo_var: ['100m_u_component_of_wind',
+     '100m_v_component_of_wind',
+     '2m_dewpoint_temperature',
+     '2m_temperature',
+     'boundary_layer_height',
+     'k_index',
+     'relative_humidity+950',
+     'relative_humidity+975',
+     'specific_humidity+950',
+     'surface_pressure',
+     'temperature+925',
+     'temperature+950',
+     'total_precipitation',
+     'u_component_of_wind+950',
+     'v_component_of_wind+950',
+     'vertical_velocity+950',
+     'vorticity+950']
+
+train:
+  batch_size: 512
+  num_exp: 5
+  num_epochs: 10
+  forecast_len: 4
+  hist_len: 8
+  emb_dim: 8
+  hid_dim: 32
+  edge_dim: 5
+  lr: 0.001
+  attn: luong
+  model: GRU

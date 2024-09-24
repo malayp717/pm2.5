@@ -14,6 +14,7 @@ from models.GraphConv_GRU import GraphConv_GRU
 from models.GNN_GRU import GNN_GRU
 from models.Attn_GNN_GRU import Attn_GNN_GRU
 from graph import Graph
+from china_graph import Graph as cGraph
 from utils import eval_stat, load_model
 
 import warnings
@@ -23,7 +24,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
-config_fp = os.path.join(proj_dir, 'config.yaml')
+config_fp = os.path.join(proj_dir, 'china_config.yaml')
 
 with open(config_fp, 'r') as f:
     config = yaml.safe_load(f)
@@ -34,33 +35,43 @@ model_dir = config['dirpath']['model_dir']
 
 npy_fp = data_dir + config['filepath']['npy_fp']
 locations_fp = data_dir + config['filepath']['locations_fp']
+altitude_fp = data_dir + config['filepath']['altitude_fp']
 
 batch_size = int(config['train']['batch_size'])
 num_exp = int(config['train']['num_exp'])
+num_epochs = int(config['train']['num_epochs'])
+forecast_len = int(config['train']['forecast_len'])
+hist_len = int(config['train']['hist_len'])
 emb_dim = int(config['train']['emb_dim'])
 hid_dim = int(config['train']['hid_dim'])
 edge_dim = int(config['train']['edge_dim'])
+lr = float(config['train']['lr'])
+model_type = config['train']['model']
+attn = config['train']['attn'] if model_type == 'Attn_GNN_GRU' else None
 
 update = int(config['dataset']['update'])
 data_start = config['dataset']['data_start']
 data_end = config['dataset']['data_end']
+dataset_num = config['dataset']['num']
 
 dist_thresh = float(config['threshold']['distance'])
+alt_thresh = float(config['threshold']['altitude'])
 haze_thresh = float(config['threshold']['haze'])
 
-train_start = config['split']['train_start']
-train_end = config['split']['train_end']
-val_start = config['split']['val_start']
-val_end = config['split']['val_end']
-test_start = config['split']['test_start']
-test_end = config['split']['test_end']
+train_start = config['split'][dataset_num]['train_start']
+train_end = config['split'][dataset_num]['train_end']
+val_start = config['split'][dataset_num]['val_start']
+val_end = config['split'][dataset_num]['val_end']
+test_start = config['split'][dataset_num]['test_start']
+test_end = config['split'][dataset_num]['test_end']
 
 criterion = nn.MSELoss()
 # ------------- Config parameters end   ------------- #
 
 def get_data_info(hist_len, forecast_len):
 
-    graph = Graph(locations_fp, dist_thresh)
+    # graph = Graph(locations_fp, dist_thresh)
+    graph = cGraph(locations_fp, altitude_fp, dist_thresh, alt_thresh)
     num_locs = graph.num_locs
 
     train_data = Dataset(npy_fp, forecast_len, hist_len, num_locs, train_start, train_end, data_start, update)
@@ -142,7 +153,8 @@ def test(model, loader, pm25_mean, pm25_std, hist_len):
 
 if __name__ == '__main__':
 
-    hist_len, forecast_len = [24, 48], [12, 24]
+    # hist_len, forecast_len = [24, 48], [12, 24]
+    hist_len, forecast_len = [8], [4]
     model_types = ['GRU', 'GC_GRU', 'GraphConv_GRU', 'GNN_GRU', 'Attn_GNN_GRU']
     overall_stats = []
 
@@ -161,8 +173,8 @@ if __name__ == '__main__':
 
             for i in range(num_exp):
 
-                model_fp = f'{model_dir}/{model_type}_{hl}_{fl}_{i}.pth.tar' if attn == None\
-                                    else f'{model_dir}/{model_type}_{attn}_{hl}_{fl}_{i}.pth.tar'
+                model_fp = f'{model_dir}/china_{model_type}_{hl}_{fl}_{i}.pth.tar' if attn == None\
+                                    else f'{model_dir}/china_{model_type}_{attn}_{hl}_{fl}_{i}.pth.tar'
                 model = get_model_info(model_type, train_data, hl, fl, graph, attn)
 
                 model.to(device)
@@ -183,4 +195,4 @@ if __name__ == '__main__':
             overall_stats.append(model_stats)
 
     overall_df = pd.DataFrame(data=overall_stats)
-    overall_df.to_csv(f'{data_dir}/stats.csv', index=False)
+    overall_df.to_csv(f'{data_dir}/china_stats.csv', index=False)
