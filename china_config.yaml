@@ -6,7 +6,7 @@ dirpath:
   plots_dir: /hdd/malay/plots/
 
 filepath:
-  npy_fp: KnowAir1.npy
+  npy_fp: KnowAir.npy
   locations_fp: china_locations.txt
   altitude_fp: china_altitude.npy
 

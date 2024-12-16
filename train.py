@@ -40,7 +40,7 @@ model_dir = config['dirpath']['model_dir']
 
 npy_fp = data_dir + config['filepath']['npy_fp']
 locations_fp = data_dir + config['filepath']['locations_fp']
-altitude_fp = None if args.config == 'bihar_config.yaml' else data_dir + config['filepath']['altitude_fp']
+altitude_fp = None if location == 'bihar' else data_dir + config['filepath']['altitude_fp']
 
 batch_size = int(config['train']['batch_size'])
 num_exp = int(config['train']['num_exp'])
