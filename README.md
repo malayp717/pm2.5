@@ -46,16 +46,13 @@ This study is based on two similar real world datasets:
 
 ## Run
 ### Training
-    ```
     python -u train.py --config <config_file>.yaml
-    ```
+    
 Make sure to choose the correct configuration file:
 - `bihar_config.yaml`: Use this file for training on the Bihar dataset.
 - `china_config.yaml`: Use this file for training on the China dataset.
 
 ### Evaluation
-    ```
     python -u stats.py --config <config_file>.yaml
-    ```
 
 ## Reference
