@@ -1,6 +1,6 @@
 # Spatio-Temporal Forecasting of $$PM_{2.5}$$ via Spatial-Diffusion Guided Encoder-Decoder Architecture
 
-This repository contains the code for the research paper **"Spatio-Temporal Forecasting of $$PM_{2.5}$$ via Spatial-Diffusion guided Encoder-Decoder Architecture"** accepted for presentation at **"CODS-COMAD'24"**.
+This repository contains the code for the research paper [**"Spatio-Temporal Forecasting of $$PM_{2.5}$$ via Spatial-Diffusion guided Encoder-Decoder Architecture"**](https://arxiv.org/abs/2412.13935) accepted for presentation at **"CODS-COMAD'24"**.
 
 ## Table of Contents
 - [Abstract](#abstract)
@@ -56,3 +56,14 @@ Make sure to choose the correct configuration file:
     python -u stats.py --config <config_file>.yaml
 
 ## Citation
+```
+@misc{pandey2024spatiotemporalforecastingpm25spatialdiffusion,
+      title={Spatio-Temporal Forecasting of PM2.5 via Spatial-Diffusion guided Encoder-Decoder Architecture}, 
+      author={Malay Pandey and Vaishali Jain and Nimit Godhani and Sachchida Nand Tripathi and Piyush Rai},
+      year={2024},
+      eprint={2412.13935},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2412.13935}, 
+}
+```
