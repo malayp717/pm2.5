@@ -30,23 +30,25 @@ split:
   test_start: [2018, 1, 1]
   test_end: [2018, 12, 31]
   
-meteo_var: ['100m_u_component_of_wind',
-     '100m_v_component_of_wind',
-     '2m_dewpoint_temperature',
-     '2m_temperature',
-     'boundary_layer_height',
-     'k_index',
-     'relative_humidity+950',
-     'relative_humidity+975',
-     'specific_humidity+950',
-     'surface_pressure',
-     'temperature+925',
-     'temperature+950',
-     'total_precipitation',
-     'u_component_of_wind+950',
-     'v_component_of_wind+950',
-     'vertical_velocity+950',
-     'vorticity+950']
+meteo_var: [
+    '100m_u_component_of_wind',
+    '100m_v_component_of_wind',
+    '2m_dewpoint_temperature',
+    '2m_temperature',
+    'boundary_layer_height',
+    'k_index',
+    'relative_humidity+950',
+    'relative_humidity+975',
+    'specific_humidity+950',
+    'surface_pressure',
+    'temperature+925',
+    'temperature+950',
+    'total_precipitation',
+    'u_component_of_wind+950',
+    'v_component_of_wind+950',
+    'vertical_velocity+950',
+    'vorticity+950'
+  ]
 
 train:
   batch_size: 512

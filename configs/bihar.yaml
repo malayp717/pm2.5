@@ -28,7 +28,20 @@ split:
   test_start: [2024, 3, 1]
   test_end: [2024, 4, 30]
 
-meteo_var: ['timestamp', 'longitude', 'latitude', 'rh', 'temp', 'blh', 'kx', 'sp', 'tp', 'u10', 'v10', 'pm25']
+meteo_var: [
+    'timestamp', 
+    'longitude', 
+    'latitude', 
+    'rh', 
+    'temp', 
+    'blh', 
+    'kx', 
+    'sp', 
+    'tp', 
+    'u10', 
+    'v10', 
+    'pm25'
+  ]
 
 train:
   batch_size: 128

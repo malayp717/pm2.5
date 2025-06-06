@@ -13,8 +13,8 @@ from models.GC_GRU import GC_GRU
 from models.GraphConv_GRU import GraphConv_GRU
 from models.GNN_GRU import GNN_GRU
 from models.Attn_GNN_GRU import Attn_GNN_GRU
-from bihar_graph import Graph as bGraph
-from china_graph import Graph as cGraph
+from graph.bihar import Graph as bGraph
+from graph.china import Graph as cGraph
 from utils import eval_stat, save_model, load_model
 from pathlib import Path
 import argparse
@@ -147,6 +147,7 @@ def train(model, loader, optimizer):
     train_loss /= (batch_idx+1)
     return train_loss
 
+@torch.no_grad()
 def val(model, loader):
     model.eval()
     val_loss = 0
@@ -165,6 +166,7 @@ def val(model, loader):
     val_loss /= (batch_idx+1)
     return val_loss
 
+@torch.no_grad()
 def test(model, loader, pm25_mean, pm25_std):
     model.eval()
     test_loss = 0

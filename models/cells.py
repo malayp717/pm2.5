@@ -1,8 +1,9 @@
+# Code taken from PM2.5-GNN paper: https://github.com/shuowang-ai/PM2.5-GNN
+
 import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-
 
 class GRUCell(nn.Module):
 

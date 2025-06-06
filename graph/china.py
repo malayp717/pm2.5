@@ -1,3 +1,5 @@
+# Code taken from PM2.5-GNN Paper: https://github.com/shuowang-ai/PM2.5-GNN
+
 import os
 import sys
 import yaml
